@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "45965439519",
+    "project_id": "dangerapp-9c47d",
+    "storage_bucket": "dangerapp-9c47d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:45965439519:android:efe13ad619db0a43931b2a",
+        "android_client_info": {
+          "package_name": "com.example.hackathonprep"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCw7ag3xylhbCxf_uGoYQjB2EUQnXpW6bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -7,6 +7,8 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.CountDownTimer;
+import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -23,9 +25,24 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executors;
 
+import com.example.hackathonprep.BuildConfig;
 import ai.picovoice.porcupine.Porcupine;
 import ai.picovoice.porcupine.PorcupineException;
+
+
+import com.google.ai.client.generativeai.GenerativeModel;
+import com.google.ai.client.generativeai.type.Content;
+import com.google.ai.client.generativeai.type.GenerateContentResponse;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.FirebaseFirestore;
+
+
 
 public class MainActivity extends AppCompatActivity {
     private Porcupine porcupine;
@@ -35,6 +52,10 @@ public class MainActivity extends AppCompatActivity {
     private Button dangerButton;
     private static final int REQUEST_RECORD_AUDIO = 1;
     private CountDownTimer timer;
+
+    private MediaRecorder recorder;
+    private File audioFile;
+    String geminiApiKey = BuildConfig.GEMINI_API_KEY;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -197,5 +218,88 @@ public class MainActivity extends AppCompatActivity {
         timer.start();
     }
 
+    private void startRecording() {
+        try {
+            audioFile = new File(getExternalFilesDir(null), "distress_audio.wav");
+
+            recorder = new MediaRecorder();
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+            recorder.setOutputFile(audioFile.getAbsolutePath());
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+
+            recorder.prepare();
+            recorder.start();
+
+            // Record for 10 sec then stop
+            new Handler().postDelayed(this::stopRecording, 10000);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void stopRecording() {
+        recorder.stop();
+        recorder.release();
+        recorder = null;
+
+        //call Gemini
+        analyzeDistressAudio(audioFile);
+    }
+
+
+
+    private void analyzeDistressAudio(File audioFile) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                GenerativeModel model = new GenerativeModel(
+                        "gemini-1.5-pro",
+                        BuildConfig.GEMINI_API_KEY
+                );
+
+                // Step 1: Transcribe audio
+                Content transcriptRequest = new Content.Builder()
+                        .addPart(Part.fromText("Please transcribe this audio:"))
+                        .addPart(Part.fromFile(audioFile))   // attaches the audio file
+                        .build();
+
+                GenerateContentResponse transcriptResponse = model.generateContent(transcriptRequest);
+                String transcript = transcriptResponse.getText();
+
+                // Step 2: Classify transcript
+                String classifyPrompt =
+                        "Classify the following into one of [GBV/Assault, Robbery, Harassment, Other]:\n" + transcript;
+
+                Content classifyRequest = new Content.Builder()
+                        .addPart(Part.fromText(classifyPrompt))
+                        .build();
+
+                GenerateContentResponse classResponse = model.generateContent(classifyRequest);
+                String category = classResponse.getText();
+
+                // Step 3: Save to Firestore
+                saveIncident(transcript, category);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+
+    private void saveIncident(String transcript, String category) {
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+
+        Map<String, Object> incident = new HashMap<>();
+        incident.put("transcript", transcript);
+        incident.put("category", category);
+        incident.put("timestamp", new Date());
+        incident.put("userId", FirebaseAuth.getInstance().getUid());
+
+        db.collection("incidents").add(incident)
+                .addOnSuccessListener(doc -> Log.d("FIREBASE", "Saved incident"))
+                .addOnFailureListener(e -> Log.e("FIREBASE", "Error", e));
+    }
 
 }

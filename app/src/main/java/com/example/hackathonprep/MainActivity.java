@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -29,6 +30,10 @@ import ai.picovoice.porcupine.PorcupineException;
 
 public class MainActivity extends AppCompatActivity {
     private Porcupine porcupine;
+    public EditText emailEditText;
+    public EditText passwordEditText;
+    public EditText nameEditText;
+
     private AudioRecord audioRecord;
     private boolean isListening = false;
     private Thread recordingThread;
@@ -41,13 +46,14 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.btn2), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
 
-        dangerButton = findViewById(R.id.dangerButton);
+        dangerButton = findViewById(R.id.dangerbutton);
+        Button doneButton = findViewById(R.id.done);
 
 
 
@@ -78,6 +84,41 @@ public class MainActivity extends AppCompatActivity {
         } catch (PorcupineException e) {
             e.printStackTrace();
         }
+        Button loginButton = findViewById(R.id.login);
+         nameEditText = findViewById(R.id.name);
+         emailEditText = findViewById(R.id.email);
+         passwordEditText = findViewById(R.id.password);
+        loginButton.setOnClickListener(v ->  {
+            emailEditText.setVisibility(View.VISIBLE);
+            passwordEditText.setVisibility(View.VISIBLE);
+            doneButton.setVisibility(View.VISIBLE);
+            loginButton.setVisibility(View.GONE);
+            doneButton.setOnClickListener(m -> {
+                Login login=new Login();
+                login.login(emailEditText.getText().toString(), passwordEditText.getText().toString());
+            });
+
+        });
+
+        Button signupButton = findViewById(R.id.btn1);
+          nameEditText = findViewById(R.id.name);
+         emailEditText = findViewById(R.id.email);
+         passwordEditText = findViewById(R.id.password);
+        signupButton.setOnClickListener(v ->  {
+            emailEditText.setVisibility(View.VISIBLE);
+            passwordEditText.setVisibility(View.VISIBLE);
+            doneButton.setVisibility(View.VISIBLE);
+            Signup sign=new Signup();
+            doneButton.setOnClickListener(m -> {
+                        sign.signup(emailEditText.getText().toString(), passwordEditText.getText().toString(), nameEditText.getText().toString());
+                    });
+            signupButton.setVisibility(View.GONE);
+
+        });
+
+
+
+
     }
 
     private void startWakeWordDetection() {

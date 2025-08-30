@@ -61,17 +61,6 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 .strokeColor(Color.BLUE)
                 .fillColor(0x220000FF));
 
-        try {
-            boolean success = mMap.setMapStyle(
-                    MapStyleOptions.loadRawResourceStyle(
-                            this, R.raw.map_style));
-
-            if (!success) {
-                Log.e("MapStyle", "Style parsing failed.");
-            }
-        } catch (Resources.NotFoundException e) {
-            Log.e("MapStyle", "Can't find style. Error: ", e);
-        }
 
         // Example: put a marker on Johannesburg
         LatLng joburg = new LatLng(-26.2041, 28.0473);

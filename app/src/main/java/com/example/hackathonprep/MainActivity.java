@@ -1,6 +1,7 @@
 package com.example.hackathonprep;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -19,6 +20,7 @@ import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -224,7 +226,18 @@ public class MainActivity extends AppCompatActivity {
 
     private void startRecording() {
         try {
-            audioFile = new File(getExternalFilesDir(null), "distress_audio.wav");
+            // Create the directory if it doesn't exist
+            File externalDir = getExternalFilesDir(null);
+            if (externalDir != null && !externalDir.exists()) {
+                externalDir.mkdirs();
+            }
+
+            audioFile = new File(externalDir, "distress_audio.wav");
+
+            // Delete any existing file with the same name
+            if (audioFile.exists()) {
+                audioFile.delete();
+            }
 
             recorder = new MediaRecorder();
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -240,6 +253,9 @@ public class MainActivity extends AppCompatActivity {
 
         } catch (IOException e) {
             e.printStackTrace();
+            runOnUiThread(() -> {
+                ans.setText("Recording failed: " + e.getMessage());
+            });
         }
     }
 
@@ -252,22 +268,54 @@ public class MainActivity extends AppCompatActivity {
         transcribeAudioFile(audioFile);
     }
 
+    @SuppressLint("SetTextI18n")
     private void transcribeAudioFile(File audioFile) {
+        runOnUiThread(() -> {
+            ans.setText("Checking file...");
+        });
+
+        // Debug: Check if file exists and is readable
+        if (!audioFile.exists()) {
+            runOnUiThread(() -> {
+                ans.setText("Error: File doesn't exist: " + audioFile.getAbsolutePath());
+            });
+            return;
+        }
+
+        if (!audioFile.canRead()) {
+            runOnUiThread(() -> {
+                ans.setText("Error: Cannot read file: " + audioFile.getAbsolutePath());
+            });
+            return;
+        }
+        runOnUiThread(() -> {
+            ans.setText("Transcribing...");
+            //transcribeButton.setEnabled(false);
+        });
+
         new Thread(() -> {
             try {
-                // Convert File to Uri
-                Uri audioUri = Uri.fromFile(audioFile);
+                // Convert File to Uri - use FileProvider for better security
+                Uri audioUri = FileProvider.getUriForFile(
+                        MainActivity.this,
+                        getPackageName() + ".provider",
+                        audioFile
+                );
+
                 String transcription = AudioTranscriber.transcribeAudio(audioUri);
 
                 runOnUiThread(() -> {
                     ans.setText(transcription);
-                    Toast.makeText(this, "Transcription completed!", Toast.LENGTH_SHORT).show();
+                    //transcribeButton.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Transcription completed!", Toast.LENGTH_SHORT).show();
                 });
 
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     ans.setText("Error: " + e.getMessage());
-                    Toast.makeText(this, "Transcription failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                   // transcribeButton.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Transcription failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    e.printStackTrace();
                 });
             }
         }).start();

@@ -28,7 +28,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$apiKey\"")
-
+        android.buildFeatures.buildConfig = true
 
 
     }
@@ -65,6 +65,9 @@ dependencies {
     implementation("ai.picovoice:porcupine-android:3.0.1")
     implementation("com.google.firebase:firebase-bom:34.2.0")
     implementation("com.google.firebase:firebase-analytics:23.0.0")
-    implementation ("com.google.firebase:firebase-firestore")
-    implementation ("com.google.firebase:firebase-auth")
+    implementation("com.google.android.gms:play-services-base:18.2.0")
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.10.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 }

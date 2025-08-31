@@ -5,6 +5,7 @@ import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Handler;
@@ -245,46 +246,32 @@ public class MainActivity extends AppCompatActivity {
         recorder = null;
 
         //call Gemini
-        analyzeDistressAudio(audioFile);
+        transcribeAudioFile(audioFile);
     }
 
-
-
-    private void analyzeDistressAudio(File audioFile) {
-        Executors.newSingleThreadExecutor().execute(() -> {
+    private void transcribeAudioFile(File audioFile) {
+        new Thread(() -> {
             try {
-                GenerativeModel model = new GenerativeModel(
-                        "gemini-1.5-pro",
-                        BuildConfig.GEMINI_API_KEY
-                );
+                // Convert File to Uri
+                Uri audioUri = Uri.fromFile(audioFile);
+                String transcription = AudioTranscriber.transcribeAudio(audioUri);
 
-                // Step 1: Transcribe audio
-                Content transcriptRequest = new Content.Builder()
-                        .addPart(Part.fromText("Please transcribe this audio:"))
-                        .addPart(Part.fromFile(audioFile))   // attaches the audio file
-                        .build();
-
-                GenerateContentResponse transcriptResponse = model.generateContent(transcriptRequest);
-                String transcript = transcriptResponse.getText();
-
-                // Step 2: Classify transcript
-                String classifyPrompt =
-                        "Classify the following into one of [GBV/Assault, Robbery, Harassment, Other]:\n" + transcript;
-
-                Content classifyRequest = new Content.Builder()
-                        .addPart(Part.fromText(classifyPrompt))
-                        .build();
-
-                GenerateContentResponse classResponse = model.generateContent(classifyRequest);
-                String category = classResponse.getText();
-
-                // Step 3: Save to Firestore
-                saveIncident(transcript, category);
+                runOnUiThread(() -> {
+                    ans.setText(transcription);
+                    Toast.makeText(this, "Transcription completed!", Toast.LENGTH_SHORT).show();
+                });
 
             } catch (Exception e) {
-                e.printStackTrace();
+                runOnUiThread(() -> {
+                    resultTextView.setText("Error: " + e.getMessage());
+                    Toast.makeText(this, "Transcription failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
             }
-        });
+        }).start();
+    }
+
+    private void analyzeDistressAudio(File audioFile) {
+
     }
 
 

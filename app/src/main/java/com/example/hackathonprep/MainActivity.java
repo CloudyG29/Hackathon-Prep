@@ -2,7 +2,9 @@ package com.example.hackathonprep;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -10,6 +12,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Handler;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -29,6 +32,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -105,6 +110,8 @@ public class MainActivity extends AppCompatActivity {
         } catch (PorcupineException e) {
             e.printStackTrace();
         }
+
+        //getSHA1Fingerprint();
     }
 
     private void startWakeWordDetection() {
@@ -275,6 +282,13 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Debug: Check if file exists and is readable
+        if (audioFile == null) {
+            runOnUiThread(() -> {
+                ans.setText("Error: Audio file is null");
+            });
+            return;
+        }
+
         if (!audioFile.exists()) {
             runOnUiThread(() -> {
                 ans.setText("Error: File doesn't exist: " + audioFile.getAbsolutePath());
@@ -288,13 +302,19 @@ public class MainActivity extends AppCompatActivity {
             });
             return;
         }
+
         runOnUiThread(() -> {
             ans.setText("Transcribing...");
-            //transcribeButton.setEnabled(false);
         });
 
         new Thread(() -> {
             try {
+                // Log file info for debugging
+                Log.d("AUDIO_FILE", "File path: " + audioFile.getAbsolutePath());
+                Log.d("AUDIO_FILE", "File size: " + audioFile.length() + " bytes");
+                Log.d("AUDIO_FILE", "File exists: " + audioFile.exists());
+                Log.d("AUDIO_FILE", "File readable: " + audioFile.canRead());
+
                 // Convert File to Uri - use FileProvider for better security
                 Uri audioUri = FileProvider.getUriForFile(
                         MainActivity.this,
@@ -302,20 +322,25 @@ public class MainActivity extends AppCompatActivity {
                         audioFile
                 );
 
-                String transcription = AudioTranscriber.transcribeAudio(audioUri);
+                Log.d("AUDIO_FILE", "Audio URI: " + audioUri.toString());
+
+                // Create instance of AudioTranscriber with context
+                AudioTranscriber transcriber = new AudioTranscriber(MainActivity.this);
+                String transcription = transcriber.transcribeAudio(audioUri);
 
                 runOnUiThread(() -> {
                     ans.setText(transcription);
-                    //transcribeButton.setEnabled(true);
                     Toast.makeText(MainActivity.this, "Transcription completed!", Toast.LENGTH_SHORT).show();
+
+                    // Save to Firebase after successful transcription
+                    saveIncident(transcription, "distress_alert");
                 });
 
             } catch (Exception e) {
+                Log.e("TRANSCRIPTION", "Error transcribing audio", e);
                 runOnUiThread(() -> {
                     ans.setText("Error: " + e.getMessage());
-                   // transcribeButton.setEnabled(true);
                     Toast.makeText(MainActivity.this, "Transcription failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    e.printStackTrace();
                 });
             }
         }).start();
@@ -336,5 +361,38 @@ public class MainActivity extends AppCompatActivity {
                 .addOnSuccessListener(doc -> Log.d("FIREBASE", "Saved incident"))
                 .addOnFailureListener(e -> Log.e("FIREBASE", "Error", e));
     }
+
+
+   /* private void getSHA1Fingerprint() {
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(
+                    getPackageName(),
+                    PackageManager.GET_SIGNATURES);
+
+            for (Signature signature : info.signatures) {
+                MessageDigest md = MessageDigest.getInstance("SHA-1");
+                md.update(signature.toByteArray());
+                byte[] digest = md.digest();
+                String sha1 = Base64.encodeToString(digest, Base64.DEFAULT);
+
+                Log.d("SHA-1", "Fingerprint: " + sha1);
+                // Also convert to the format shown in your image
+                StringBuilder hexString = new StringBuilder();
+                for (byte b : digest) {
+                    hexString.append(String.format("%02X:", b));
+                }
+                String formattedSha1 = hexString.toString().substring(0, hexString.length() - 1);
+                Log.d("SHA-1", "Formatted: " + formattedSha1);
+
+                // Show in a Toast or TextView temporarily
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "SHA-1: " + formattedSha1, Toast.LENGTH_LONG).show();
+                    ans.setText("SHA-1: " + formattedSha1); // Display in your TextView
+                });
+            }
+        } catch (PackageManager.NameNotFoundException | NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+    }*/
 
 }

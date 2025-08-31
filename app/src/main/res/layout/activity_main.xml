@@ -19,8 +19,8 @@
 
     <TextView
         android:id="@+id/ans"
-        android:layout_width="259dp"
-        android:layout_height="126dp"
+        android:layout_width="393dp"
+        android:layout_height="241dp"
         android:text="TextView"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

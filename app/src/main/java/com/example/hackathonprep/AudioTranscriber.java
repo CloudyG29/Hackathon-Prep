@@ -103,10 +103,10 @@ public class AudioTranscriber {
             }
 
             byte[] audioBytes = outputStream.toByteArray();
-          //  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 return Base64.getEncoder().encodeToString(audioBytes);
-           // }
+           }
         }
-        //return "";
+        return "";
     }
 }

@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -51,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isListening = false;
     private Thread recordingThread;
     private Button dangerButton;
+    private TextView ans;
     private static final int REQUEST_RECORD_AUDIO = 1;
     private CountDownTimer timer;
 
@@ -70,7 +72,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         dangerButton = findViewById(R.id.dangerButton);
-
+        ans = findViewById(R.id.ans);
 
 
         dangerButton.setOnClickListener(new View.OnClickListener() {
@@ -79,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
             {
                 //TODO: alert the community or something i donno
                 Toast.makeText(MainActivity.this, "Safeword detected! Triggering danger action!", Toast.LENGTH_LONG).show();
+                startRecording();
             }
         });
         // Request microphone permission
@@ -263,16 +266,13 @@ public class MainActivity extends AppCompatActivity {
 
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    resultTextView.setText("Error: " + e.getMessage());
+                    ans.setText("Error: " + e.getMessage());
                     Toast.makeText(this, "Transcription failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
             }
         }).start();
     }
 
-    private void analyzeDistressAudio(File audioFile) {
-
-    }
 
 
     private void saveIncident(String transcript, String category) {

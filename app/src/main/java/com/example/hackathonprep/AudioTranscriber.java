@@ -19,8 +19,8 @@ public class AudioTranscriber {
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/";
     private static final String API_KEY = "AIzaSyAmAZMJLmmjdUolKqk_r1V_BW8T6TiP99M"; // Replace with your actual API key
 
-    private Context context;
-    private GeminiApiService geminiApiService;
+    private static Context context;
+    private static GeminiApiService geminiApiService;
 
     public AudioTranscriber(Context context) {
         this.context = context;
@@ -69,7 +69,7 @@ public class AudioTranscriber {
         }
     }
 
-    private String readAudioFileToBase64(Uri audioUri) throws Exception {
+    private static String readAudioFileToBase64(Uri audioUri) throws Exception {
         try (InputStream inputStream = context.getContentResolver().openInputStream(audioUri);
              ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
 

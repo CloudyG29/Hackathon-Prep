@@ -12,14 +12,18 @@
         tools:layout="@layout/fragment_home" />
 
     <fragment
-        android:id="@+id/nav_gallery"
-        android:name="com.example.hackathonprep.ui.gallery.GalleryFragment"
-        android:label="@string/menu_gallery"
-        tools:layout="@layout/fragment_gallery" />
-
+        android:id="@+id/nav_sos"
+        android:name="com.example.hackathonprep.ui.sos.SOSFragment"
+        android:label="@string/menu_sos"
+        tools:layout="@layout/fragment_sos"/>
     <fragment
-        android:id="@+id/nav_slideshow"
-        android:name="com.example.hackathonprep.ui.slideshow.SlideshowFragment"
-        android:label="@string/menu_slideshow"
-        tools:layout="@layout/fragment_slideshow" />
+        android:id="@+id/nav_profile"
+        android:name="com.example.hackathonprep.ui.profile.ProfileFragment"
+        android:label="Profile"
+        tools:layout="@layout/fragment_profile"/>
+    <fragment
+        android:id="@+id/nav_notifications"
+        android:name="com.example.hackathonprep.ui.notifications.NotificationsFragment"
+        android:label="Notifications"
+        tools:layout="@layout/fragment_notifications"/>
 </navigation>

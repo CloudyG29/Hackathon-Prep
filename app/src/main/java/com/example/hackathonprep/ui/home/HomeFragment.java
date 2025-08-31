@@ -56,13 +56,28 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
 
-        // Optional: add a sample circle (campus)
-        LatLng campus = new LatLng(-25.7545, 28.2314);
-        mMap.addCircle(new CircleOptions()
-                .center(campus)
-                .radius(200)
-                .strokeColor(Color.BLUE)
-                .fillColor(0x220000FF));
+        // Example danger areas (hardcoded for now)
+        LatLng dangerArea1 = new LatLng(-26.2041, 28.0473); // Johannesburg example
+        LatLng dangerArea2 = new LatLng(-26.2055, 28.0485);
+
+// Add circle for danger area 1
+        CircleOptions circle1 = new CircleOptions()
+                .center(dangerArea1)
+                .radius(150) // radius in meters
+                .strokeColor(Color.RED) // border color
+                .strokeWidth(3) // border thickness
+                .fillColor(0x30FF0000); // semi-transparent red fill
+        mMap.addCircle(circle1);
+
+// Add circle for danger area 2
+        CircleOptions circle2 = new CircleOptions()
+                .center(dangerArea2)
+                .radius(100)
+                .strokeColor(Color.RED)
+                .strokeWidth(3)
+                .fillColor(0x30FF0000);
+        mMap.addCircle(circle2);
+
 
         // Check location permission and move camera safely
         if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)

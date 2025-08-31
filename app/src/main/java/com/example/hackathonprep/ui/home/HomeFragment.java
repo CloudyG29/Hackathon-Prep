@@ -3,11 +3,11 @@ package com.example.hackathonprep.ui.home;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Location;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
@@ -23,20 +23,24 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 public class HomeFragment extends Fragment implements OnMapReadyCallback {
 
     private GoogleMap mMap;
+    private FusedLocationProviderClient fusedLocationClient;
     private FragmentHomeBinding binding;
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
-        HomeViewModel homeViewModel =
-                new ViewModelProvider(this).get(HomeViewModel.class);
-
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity());
 
         // Set up the map fragment
         SupportMapFragment mapFragment = (SupportMapFragment) getChildFragmentManager()
@@ -51,29 +55,60 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                || ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            mMap.setMyLocationEnabled(true);
-        }
 
-        LatLng campus = new LatLng(-25.7545, 28.2314); // Example: Pretoria campus
-        mMap.addMarker(new MarkerOptions()
-                .position(campus)
-                .title("My Campus")
-                .snippet("Tap me for more info"));
-        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(campus, 15));
-
-        // Options: NORMAL, SATELLITE, TERRAIN, HYBRID
+        // Optional: add a sample circle (campus)
+        LatLng campus = new LatLng(-25.7545, 28.2314);
         mMap.addCircle(new CircleOptions()
                 .center(campus)
-                .radius(200) // in meters
+                .radius(200)
                 .strokeColor(Color.BLUE)
                 .fillColor(0x220000FF));
 
-        // Example: put a marker on Johannesburg
-        LatLng joburg = new LatLng(-26.2041, 28.0473);
-        mMap.addMarker(new MarkerOptions().position(joburg).title("Marker in Joburg"));
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(joburg, 12));
+        // Check location permission and move camera safely
+        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE
+            );
+        } else {
+            moveToUserLocation();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                moveToUserLocation();
+            }
+        }
+    }
+
+    private void moveToUserLocation() {
+        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) return;
+
+        if (mMap == null) return; // extra safety
+
+        mMap.setMyLocationEnabled(true);
+
+        fusedLocationClient.getLastLocation().addOnSuccessListener(requireActivity(), new OnSuccessListener<Location>() {
+            @Override
+            public void onSuccess(Location location) {
+                if (location != null) {
+                    LatLng myLatLng = new LatLng(location.getLatitude(), location.getLongitude());
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(myLatLng, 15));
+                } else {
+                    // fallback if location is null
+                    LatLng fallback = new LatLng(-25.7545, 28.2314);
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(fallback, 15));
+                    mMap.addMarker(new MarkerOptions().position(fallback).title("Campus (fallback)"));
+                }
+            }
+        });
     }
 
     @Override

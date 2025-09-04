@@ -2,6 +2,9 @@ import org.gradle.initialization.Environment
 import java.io.FileInputStream
 import java.util.Properties
 
+
+
+
 plugins {
     alias(libs.plugins.android.application)
     id("com.google.gms.google-services")
@@ -16,12 +19,12 @@ val apiKey = localProperties.getProperty("GEMINI_API_KEY") ?: System.getenv("GEM
 
 android {
     namespace = "com.example.hackathonprep"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.hackathonprep"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
@@ -29,6 +32,9 @@ android {
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$apiKey\"")
         android.buildFeatures.buildConfig = true
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
 
 
     }
@@ -66,8 +72,7 @@ dependencies {
     implementation("com.google.firebase:firebase-bom:34.2.0")
     implementation("com.google.firebase:firebase-analytics:23.0.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.10.0")
+    implementation("com.google.firebase:firebase-storage:20.3.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
 }

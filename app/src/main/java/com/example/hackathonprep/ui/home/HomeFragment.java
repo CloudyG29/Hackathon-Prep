@@ -30,9 +30,10 @@ import com.google.android.gms.tasks.OnSuccessListener;
 public class HomeFragment extends Fragment implements OnMapReadyCallback {
 
     private GoogleMap mMap;
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
     private FusedLocationProviderClient fusedLocationClient;
     private FragmentHomeBinding binding;
-    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
+
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,

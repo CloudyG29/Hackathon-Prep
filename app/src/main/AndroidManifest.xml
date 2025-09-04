@@ -2,9 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -15,6 +15,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.HackathonPrep">
+        <activity
+            android:name=".ui.authentication.SignupActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.authentication.LoginActivity"
+            android:exported="false" />
         <activity
             android:name=".MainActivity2"
             android:exported="true"
@@ -35,9 +41,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <meta-data
-        android:name="com.google.android.geo.API_KEY"
-        android:value="AIzaSyAmAZMJLmmjdUolKqk_r1V_BW8T6TiP99M"/>
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyAmAZMJLmmjdUolKqk_r1V_BW8T6TiP99M" />
     </application>
 
 </manifest>

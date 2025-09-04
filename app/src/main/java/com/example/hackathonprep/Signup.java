@@ -19,10 +19,11 @@ public class Signup {
                 FirebaseUser user = mAuth.getCurrentUser();
                 if (user != null) {
                     String uid = user.getUid();
+                    Log.d("Signup","User created with UID:"+uid);
                     Map<String,Object> userData = new HashMap<>();
                     userData.put("name",name);
                     userData.put("email",email);
-                    db.collection("ussers").document(uid).set(userData).addOnSuccessListener(aVoid ->
+                    db.collection("users").document(uid).set(userData).addOnSuccessListener(aVoid ->
                                     Log.d("Signup","User data saved successfully"))
                     .addOnFailureListener(e -> Log.w("Signup","Error saving user data",e));
                     }

@@ -1,6 +1,7 @@
 package com.example.hackathonprep;
 
 import android.util.Log;
+import android.widget.Toast;
 
 import com.google.firebase.Firebase;
 import com.google.firebase.auth.FirebaseAuth;
@@ -21,8 +22,8 @@ public class Login {
                     String phone=document.getString("phone");
                     Log.d("Login","Name:"+name);
                     }
-                    });
 
+                    });
             }
             else{
                 Log.d("Login","Login Failed");

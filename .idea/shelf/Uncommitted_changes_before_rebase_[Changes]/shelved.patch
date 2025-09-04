@@ -1,0 +1,925 @@
+Index: app/src/main/java/com/example/hackathonprep/MainActivity.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.example.hackathonprep;\r\n\r\nimport android.Manifest;\r\nimport android.annotation.SuppressLint;\r\nimport android.content.pm.PackageInfo;\r\nimport android.content.pm.PackageManager;\r\nimport android.content.pm.Signature;\r\nimport android.media.AudioFormat;\r\nimport android.media.AudioRecord;\r\nimport android.media.MediaRecorder;\r\nimport android.net.Uri;\r\nimport android.os.Bundle;\r\nimport android.os.CountDownTimer;\r\nimport android.os.Handler;\r\nimport android.util.Base64;\r\nimport android.util.Log;\r\nimport android.view.View;\r\nimport android.widget.Button;\r\nimport android.widget.TextView;\r\nimport android.widget.Toast;\r\n\r\nimport androidx.activity.EdgeToEdge;\r\nimport androidx.appcompat.app.AlertDialog;\r\nimport androidx.appcompat.app.AppCompatActivity;\r\nimport androidx.core.app.ActivityCompat;\r\nimport androidx.core.content.FileProvider;\r\nimport androidx.core.graphics.Insets;\r\nimport androidx.core.view.ViewCompat;\r\nimport androidx.core.view.WindowInsetsCompat;\r\n\r\nimport java.io.File;\r\nimport java.io.FileOutputStream;\r\nimport java.io.IOException;\r\nimport java.io.InputStream;\r\nimport java.security.MessageDigest;\r\nimport java.security.NoSuchAlgorithmException;\r\nimport java.util.Date;\r\nimport java.util.HashMap;\r\nimport java.util.Map;\r\nimport java.util.concurrent.Executors;\r\n\r\nimport com.example.hackathonprep.BuildConfig;\r\nimport ai.picovoice.porcupine.Porcupine;\r\nimport ai.picovoice.porcupine.PorcupineException;\r\n\r\n\r\nimport com.google.ai.client.generativeai.GenerativeModel;\r\nimport com.google.ai.client.generativeai.type.Content;\r\nimport com.google.ai.client.generativeai.type.GenerateContentResponse;\r\n\r\nimport com.google.firebase.auth.FirebaseAuth;\r\nimport com.google.firebase.firestore.FirebaseFirestore;\r\n\r\n\r\n\r\npublic class MainActivity extends AppCompatActivity {\r\n    private Porcupine porcupine;\r\n    private AudioRecord audioRecord;\r\n    private boolean isListening = false;\r\n    private Thread recordingThread;\r\n    private Button dangerButton;\r\n    private TextView ans;\r\n    private static final int REQUEST_RECORD_AUDIO = 1;\r\n    private CountDownTimer timer;\r\n\r\n    private MediaRecorder recorder;\r\n    private File audioFile;\r\n    String geminiApiKey = BuildConfig.GEMINI_API_KEY;\r\n\r\n    @Override\r\n    protected void onCreate(Bundle savedInstanceState) {\r\n        super.onCreate(savedInstanceState);\r\n        EdgeToEdge.enable(this);\r\n        setContentView(R.layout.activity_main);\r\n        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {\r\n            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());\r\n            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);\r\n            return insets;\r\n        });\r\n\r\n        dangerButton = findViewById(R.id.dangerButton);\r\n        ans = findViewById(R.id.ans);\r\n\r\n\r\n        dangerButton.setOnClickListener(new View.OnClickListener() {\r\n            @Override\r\n            public void onClick(View view)\r\n            {\r\n                //TODO: alert the community or something i donno\r\n                Toast.makeText(MainActivity.this, \"Safeword detected! Triggering danger action!\", Toast.LENGTH_LONG).show();\r\n                startRecording();\r\n            }\r\n        });\r\n        // Request microphone permission\r\n        ActivityCompat.requestPermissions(this,\r\n                new String[]{Manifest.permission.RECORD_AUDIO},\r\n                REQUEST_RECORD_AUDIO);\r\n\r\n        try {\r\n            // Initialize Porcupine with your safeword model\r\n            porcupine = new Porcupine.Builder()\r\n                    .setAccessKey(\"oUD1Hs9X9838Yhni2sjw+n8aaWXSZBzB11dC/xXLZkXB7VK+GaA0LQ==\")\r\n                    .setKeywordPath(getAssetPath(\"GuardianHelp.ppn\"))\r\n                    .setSensitivity(1f)\r\n                    .build(this);\r\n\r\n\r\n            startWakeWordDetection();\r\n\r\n        } catch (PorcupineException e) {\r\n            e.printStackTrace();\r\n        }\r\n\r\n        //getSHA1Fingerprint();\r\n    }\r\n\r\n    private void startWakeWordDetection() {\r\n        int bufferSize = AudioRecord.getMinBufferSize(\r\n                porcupine.getSampleRate(),\r\n                AudioFormat.CHANNEL_IN_MONO,\r\n                AudioFormat.ENCODING_PCM_16BIT);\r\n\r\n        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {\r\n            // TODO: Consider calling\r\n            //    ActivityCompat#requestPermissions\r\n            // here to request the missing permissions, and then overriding\r\n            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,\r\n            //                                          int[] grantResults)\r\n            // to handle the case where the user grants the permission. See the documentation\r\n            // for ActivityCompat#requestPermissions for more details.\r\n            return;\r\n        }\r\n        audioRecord = new AudioRecord(\r\n                MediaRecorder.AudioSource.MIC,\r\n                porcupine.getSampleRate(),\r\n                AudioFormat.CHANNEL_IN_MONO,\r\n                AudioFormat.ENCODING_PCM_16BIT,\r\n                bufferSize);\r\n\r\n        audioRecord.startRecording();\r\n        isListening = true;\r\n\r\n        recordingThread = new Thread(() -> {\r\n            short[] buffer = new short[porcupine.getFrameLength()];\r\n            while (isListening) {\r\n                int result = audioRecord.read(buffer, 0, buffer.length);\r\n                if (result > 0) {\r\n                    try {\r\n                        int keywordIndex = porcupine.process(buffer);\r\n                        if (keywordIndex >= 0) {\r\n                            runOnUiThread(() -> triggerDangerButton());\r\n                        }\r\n                    } catch (PorcupineException e) {\r\n                        e.printStackTrace();\r\n                    }\r\n                }\r\n            }\r\n        });\r\n        recordingThread.setPriority(Thread.MAX_PRIORITY);\r\n        recordingThread.start();\r\n    }\r\n    private String getAssetPath(String assetFileName) {\r\n        File file = new File(getFilesDir(), assetFileName);\r\n        if (!file.exists()) {\r\n            try (InputStream is = getAssets().open(assetFileName);\r\n                 FileOutputStream os = new FileOutputStream(file)) {\r\n                byte[] buffer = new byte[1024];\r\n                int length;\r\n                while ((length = is.read(buffer)) > 0) {\r\n                    os.write(buffer, 0, length);\r\n                }\r\n            } catch (IOException e) {\r\n                e.printStackTrace();\r\n            }\r\n        }\r\n        return file.getAbsolutePath();\r\n    }\r\n\r\n\r\n    private void triggerDangerButton() {\r\n        //Toast.makeText(MainActivity.this, \"Safeword detected! Triggering danger action!\", Toast.LENGTH_LONG).show();\r\n        dangerButton.performClick();\r\n        onWakeWordDetected();\r\n    }\r\n\r\n    protected void onDestroy() {\r\n        super.onDestroy();\r\n        isListening = false;\r\n        if (audioRecord != null) {\r\n            audioRecord.stop();\r\n            audioRecord.release();\r\n        }\r\n        if (porcupine != null) {\r\n            porcupine.delete();\r\n        }\r\n    }\r\n    private void onWakeWordDetected() {\r\n        long countdownMillis = 5000; // 5 seconds\r\n\r\n        AlertDialog.Builder builder = new AlertDialog.Builder(this);\r\n        builder.setTitle(\"Distress Alert\");\r\n        builder.setMessage(\"Distress alert will be sent in 5 seconds.\\nTap CANCEL to stop.\");\r\n        builder.setCancelable(false);\r\n\r\n        builder.setNegativeButton(\"CANCEL\", (dialog, which) -> {\r\n            if (timer != null) {\r\n                timer.cancel(); // stop the countdown\r\n            }\r\n            dialog.dismiss();\r\n            Toast.makeText(MainActivity.this, \"Alert canceled.\", Toast.LENGTH_SHORT).show();\r\n        });\r\n\r\n        AlertDialog alertDialog = builder.create();\r\n\r\n        timer = new CountDownTimer(countdownMillis, 1000) {\r\n            @Override\r\n            public void onTick(long millisUntilFinished) {\r\n                alertDialog.setMessage(\r\n                        \"Distress alert will be sent in \" + (millisUntilFinished / 1000) + \" seconds.\\nTap CANCEL to stop.\"\r\n                );\r\n            }\r\n\r\n            @Override\r\n            public void onFinish() {\r\n                alertDialog.dismiss();\r\n                //sendDistressAlert(message);\r\n            }\r\n        };\r\n\r\n        alertDialog.show();\r\n        timer.start();\r\n    }\r\n\r\n    private void startRecording() {\r\n        try {\r\n            // Create the directory if it doesn't exist\r\n            File externalDir = getExternalFilesDir(null);\r\n            if (externalDir != null && !externalDir.exists()) {\r\n                externalDir.mkdirs();\r\n            }\r\n\r\n            audioFile = new File(externalDir, \"distress_audio.wav\");\r\n\r\n            // Delete any existing file with the same name\r\n            if (audioFile.exists()) {\r\n                audioFile.delete();\r\n            }\r\n\r\n            recorder = new MediaRecorder();\r\n            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);\r\n            recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);\r\n            recorder.setOutputFile(audioFile.getAbsolutePath());\r\n            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);\r\n\r\n            recorder.prepare();\r\n            recorder.start();\r\n\r\n            // Record for 10 sec then stop\r\n            new Handler().postDelayed(this::stopRecording, 10000);\r\n\r\n        } catch (IOException e) {\r\n            e.printStackTrace();\r\n            runOnUiThread(() -> {\r\n                ans.setText(\"Recording failed: \" + e.getMessage());\r\n            });\r\n        }\r\n    }\r\n\r\n    private void stopRecording() {\r\n        recorder.stop();\r\n        recorder.release();\r\n        recorder = null;\r\n\r\n        //call Gemini\r\n        transcribeAudioFile(audioFile);\r\n    }\r\n\r\n    @SuppressLint(\"SetTextI18n\")\r\n    private void transcribeAudioFile(File audioFile) {\r\n        runOnUiThread(() -> {\r\n            ans.setText(\"Checking file...\");\r\n        });\r\n\r\n        // Debug: Check if file exists and is readable\r\n        if (audioFile == null) {\r\n            runOnUiThread(() -> {\r\n                ans.setText(\"Error: Audio file is null\");\r\n            });\r\n            return;\r\n        }\r\n\r\n        if (!audioFile.exists()) {\r\n            runOnUiThread(() -> {\r\n                ans.setText(\"Error: File doesn't exist: \" + audioFile.getAbsolutePath());\r\n            });\r\n            return;\r\n        }\r\n\r\n        if (!audioFile.canRead()) {\r\n            runOnUiThread(() -> {\r\n                ans.setText(\"Error: Cannot read file: \" + audioFile.getAbsolutePath());\r\n            });\r\n            return;\r\n        }\r\n\r\n        runOnUiThread(() -> {\r\n            ans.setText(\"Transcribing...\");\r\n        });\r\n\r\n        new Thread(() -> {\r\n            try {\r\n                // Log file info for debugging\r\n                Log.d(\"AUDIO_FILE\", \"File path: \" + audioFile.getAbsolutePath());\r\n                Log.d(\"AUDIO_FILE\", \"File size: \" + audioFile.length() + \" bytes\");\r\n                Log.d(\"AUDIO_FILE\", \"File exists: \" + audioFile.exists());\r\n                Log.d(\"AUDIO_FILE\", \"File readable: \" + audioFile.canRead());\r\n\r\n                // Convert File to Uri - use FileProvider for better security\r\n                Uri audioUri = FileProvider.getUriForFile(\r\n                        MainActivity.this,\r\n                        getPackageName() + \".provider\",\r\n                        audioFile\r\n                );\r\n\r\n                Log.d(\"AUDIO_FILE\", \"Audio URI: \" + audioUri.toString());\r\n\r\n                // Create instance of AudioTranscriber with context\r\n                AudioTranscriber transcriber = new AudioTranscriber(MainActivity.this);\r\n                String transcription = transcriber.transcribeAudio(audioUri);\r\n\r\n                runOnUiThread(() -> {\r\n                    ans.setText(transcription);\r\n                    Toast.makeText(MainActivity.this, \"Transcription completed!\", Toast.LENGTH_SHORT).show();\r\n\r\n                    // Save to Firebase after successful transcription\r\n                    saveIncident(transcription, \"distress_alert\");\r\n                });\r\n\r\n            } catch (Exception e) {\r\n                Log.e(\"TRANSCRIPTION\", \"Error transcribing audio\", e);\r\n                runOnUiThread(() -> {\r\n                    ans.setText(\"Error: \" + e.getMessage());\r\n                    Toast.makeText(MainActivity.this, \"Transcription failed: \" + e.getMessage(), Toast.LENGTH_SHORT).show();\r\n                });\r\n            }\r\n        }).start();\r\n    }\r\n\r\n\r\n\r\n    private void saveIncident(String transcript, String category) {\r\n        FirebaseFirestore db = FirebaseFirestore.getInstance();\r\n\r\n        Map<String, Object> incident = new HashMap<>();\r\n        incident.put(\"transcript\", transcript);\r\n        incident.put(\"category\", category);\r\n        incident.put(\"timestamp\", new Date());\r\n        incident.put(\"userId\", FirebaseAuth.getInstance().getUid());\r\n\r\n        db.collection(\"incidents\").add(incident)\r\n                .addOnSuccessListener(doc -> Log.d(\"FIREBASE\", \"Saved incident\"))\r\n                .addOnFailureListener(e -> Log.e(\"FIREBASE\", \"Error\", e));\r\n    }\r\n\r\n\r\n   /* private void getSHA1Fingerprint() {\r\n        try {\r\n            PackageInfo info = getPackageManager().getPackageInfo(\r\n                    getPackageName(),\r\n                    PackageManager.GET_SIGNATURES);\r\n\r\n            for (Signature signature : info.signatures) {\r\n                MessageDigest md = MessageDigest.getInstance(\"SHA-1\");\r\n                md.update(signature.toByteArray());\r\n                byte[] digest = md.digest();\r\n                String sha1 = Base64.encodeToString(digest, Base64.DEFAULT);\r\n\r\n                Log.d(\"SHA-1\", \"Fingerprint: \" + sha1);\r\n                // Also convert to the format shown in your image\r\n                StringBuilder hexString = new StringBuilder();\r\n                for (byte b : digest) {\r\n                    hexString.append(String.format(\"%02X:\", b));\r\n                }\r\n                String formattedSha1 = hexString.toString().substring(0, hexString.length() - 1);\r\n                Log.d(\"SHA-1\", \"Formatted: \" + formattedSha1);\r\n\r\n                // Show in a Toast or TextView temporarily\r\n                runOnUiThread(() -> {\r\n                    Toast.makeText(this, \"SHA-1: \" + formattedSha1, Toast.LENGTH_LONG).show();\r\n                    ans.setText(\"SHA-1: \" + formattedSha1); // Display in your TextView\r\n                });\r\n            }\r\n        } catch (PackageManager.NameNotFoundException | NoSuchAlgorithmException e) {\r\n            e.printStackTrace();\r\n        }\r\n    }*/\r\n\r\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/MainActivity.java b/app/src/main/java/com/example/hackathonprep/MainActivity.java
+--- a/app/src/main/java/com/example/hackathonprep/MainActivity.java	(revision b5df7baf286f41d715ef74e46b1a788e04dcac3f)
++++ b/app/src/main/java/com/example/hackathonprep/MainActivity.java	(date 1756927552087)
+@@ -2,9 +2,8 @@
+ 
+ import android.Manifest;
+ import android.annotation.SuppressLint;
+-import android.content.pm.PackageInfo;
++import android.content.Intent;
+ import android.content.pm.PackageManager;
+-import android.content.pm.Signature;
+ import android.media.AudioFormat;
+ import android.media.AudioRecord;
+ import android.media.MediaRecorder;
+@@ -12,7 +11,7 @@
+ import android.os.Bundle;
+ import android.os.CountDownTimer;
+ import android.os.Handler;
+-import android.util.Base64;
++import android.speech.RecognizerIntent;
+ import android.util.Log;
+ import android.view.View;
+ import android.widget.Button;
+@@ -20,6 +19,7 @@
+ import android.widget.Toast;
+ 
+ import androidx.activity.EdgeToEdge;
++import androidx.annotation.NonNull;
+ import androidx.appcompat.app.AlertDialog;
+ import androidx.appcompat.app.AppCompatActivity;
+ import androidx.core.app.ActivityCompat;
+@@ -28,31 +28,26 @@
+ import androidx.core.view.ViewCompat;
+ import androidx.core.view.WindowInsetsCompat;
+ 
++import com.example.hackathonprep.AdvancedEmergencyDetector;
++import com.example.hackathonprep.EmergencyAnalyzer;
++import com.example.hackathonprep.EmergencyAudioProcessor;
++import com.example.hackathonprep.RetrofitClient;
++import com.google.firebase.auth.FirebaseAuth;
++import com.google.firebase.firestore.FirebaseFirestore;
++
+ import java.io.File;
+ import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.io.InputStream;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
++import java.util.ArrayList;
+ import java.util.Date;
+ import java.util.HashMap;
+ import java.util.Map;
+-import java.util.concurrent.Executors;
++import java.util.concurrent.CompletableFuture;
+ 
+-import com.example.hackathonprep.BuildConfig;
+ import ai.picovoice.porcupine.Porcupine;
+ import ai.picovoice.porcupine.PorcupineException;
+ 
+-
+-import com.google.ai.client.generativeai.GenerativeModel;
+-import com.google.ai.client.generativeai.type.Content;
+-import com.google.ai.client.generativeai.type.GenerateContentResponse;
+-
+-import com.google.firebase.auth.FirebaseAuth;
+-import com.google.firebase.firestore.FirebaseFirestore;
+-
+-
+-
+ public class MainActivity extends AppCompatActivity {
+     private Porcupine porcupine;
+     private AudioRecord audioRecord;
+@@ -61,12 +56,18 @@
+     private Button dangerButton;
+     private TextView ans;
+     private static final int REQUEST_RECORD_AUDIO = 1;
++    private static final int SPEECH_RECOGNITION_REQUEST = 123;
+     private CountDownTimer timer;
+ 
+     private MediaRecorder recorder;
+     private File audioFile;
+     String geminiApiKey = BuildConfig.GEMINI_API_KEY;
+ 
++    // NEW: AI Components
++    private EmergencyAudioProcessor audioProcessor;
++    private EmergencyAnalyzer emergencyAnalyzer;
++    private AdvancedEmergencyDetector advancedDetector;
++
+     @Override
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
+@@ -81,16 +82,17 @@
+         dangerButton = findViewById(R.id.dangerButton);
+         ans = findViewById(R.id.ans);
+ 
++        // NEW: Initialize AI components
++        initializeAIComponents();
+ 
+         dangerButton.setOnClickListener(new View.OnClickListener() {
+             @Override
+-            public void onClick(View view)
+-            {
+-                //TODO: alert the community or something i donno
++            public void onClick(View view) {
+                 Toast.makeText(MainActivity.this, "Safeword detected! Triggering danger action!", Toast.LENGTH_LONG).show();
+                 startRecording();
+             }
+         });
++
+         // Request microphone permission
+         ActivityCompat.requestPermissions(this,
+                 new String[]{Manifest.permission.RECORD_AUDIO},
+@@ -104,14 +106,16 @@
+                     .setSensitivity(1f)
+                     .build(this);
+ 
+-
+             startWakeWordDetection();
+ 
+         } catch (PorcupineException e) {
+             e.printStackTrace();
+         }
++    }
+ 
+-        //getSHA1Fingerprint();
++    // NEW: Initialize AI components
++    private void initializeAIComponents() {
++        audioProcessor = new EmergencyAudioProcessor(this);
+     }
+ 
+     private void startWakeWordDetection() {
+@@ -121,13 +125,6 @@
+                 AudioFormat.ENCODING_PCM_16BIT);
+ 
+         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+-            // TODO: Consider calling
+-            //    ActivityCompat#requestPermissions
+-            // here to request the missing permissions, and then overriding
+-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+-            //                                          int[] grantResults)
+-            // to handle the case where the user grants the permission. See the documentation
+-            // for ActivityCompat#requestPermissions for more details.
+             return;
+         }
+         audioRecord = new AudioRecord(
+@@ -159,6 +156,7 @@
+         recordingThread.setPriority(Thread.MAX_PRIORITY);
+         recordingThread.start();
+     }
++
+     private String getAssetPath(String assetFileName) {
+         File file = new File(getFilesDir(), assetFileName);
+         if (!file.exists()) {
+@@ -176,9 +174,7 @@
+         return file.getAbsolutePath();
+     }
+ 
+-
+     private void triggerDangerButton() {
+-        //Toast.makeText(MainActivity.this, "Safeword detected! Triggering danger action!", Toast.LENGTH_LONG).show();
+         dangerButton.performClick();
+         onWakeWordDetected();
+     }
+@@ -194,6 +190,7 @@
+             porcupine.delete();
+         }
+     }
++
+     private void onWakeWordDetected() {
+         long countdownMillis = 5000; // 5 seconds
+ 
+@@ -204,10 +201,10 @@
+ 
+         builder.setNegativeButton("CANCEL", (dialog, which) -> {
+             if (timer != null) {
+-                timer.cancel(); // stop the countdown
++                timer.cancel();
+             }
+             dialog.dismiss();
+-            Toast.makeText(MainActivity.this, "Alert canceled.", Toast.LENGTH_SHORT).show();
++            Toast.makeText(this, "Alert canceled.", Toast.LENGTH_SHORT).show();
+         });
+ 
+         AlertDialog alertDialog = builder.create();
+@@ -223,7 +220,7 @@
+             @Override
+             public void onFinish() {
+                 alertDialog.dismiss();
+-                //sendDistressAlert(message);
++                startRecording(); // Start recording when timer completes
+             }
+         };
+ 
+@@ -233,18 +230,7 @@
+ 
+     private void startRecording() {
+         try {
+-            // Create the directory if it doesn't exist
+-            File externalDir = getExternalFilesDir(null);
+-            if (externalDir != null && !externalDir.exists()) {
+-                externalDir.mkdirs();
+-            }
+-
+-            audioFile = new File(externalDir, "distress_audio.wav");
+-
+-            // Delete any existing file with the same name
+-            if (audioFile.exists()) {
+-                audioFile.delete();
+-            }
++            audioFile = new File(getExternalFilesDir(null), "emergency_audio.wav");
+ 
+             recorder = new MediaRecorder();
+             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+@@ -255,98 +241,179 @@
+             recorder.prepare();
+             recorder.start();
+ 
+-            // Record for 10 sec then stop
+-            new Handler().postDelayed(this::stopRecording, 10000);
++            // Record for 7 seconds (optimal for emergency context)
++            new Handler().postDelayed(this::stopAndAnalyze, 7000);
+ 
+         } catch (IOException e) {
+-            e.printStackTrace();
+-            runOnUiThread(() -> {
+-                ans.setText("Recording failed: " + e.getMessage());
+-            });
++            Toast.makeText(this, "Recording failed", Toast.LENGTH_SHORT).show();
+         }
+     }
++
++    private void stopAndAnalyze() {
++        if (recorder != null) {
++            recorder.stop();
++            recorder.release();
++            recorder = null;
++        }
++
++        // AUTOMATIC ANALYSIS - No user input required
++        analyzeEmergencyAudio(audioFile);
++    }
+ 
+     private void stopRecording() {
+-        recorder.stop();
+-        recorder.release();
+-        recorder = null;
++        if (recorder != null) {
++            recorder.stop();
++            recorder.release();
++            recorder = null;
++        }
+ 
+-        //call Gemini
+-        transcribeAudioFile(audioFile);
++        // NEW: Use the advanced audio processing
++        processEmergencyRecording(audioFile);
+     }
+ 
+-    @SuppressLint("SetTextI18n")
+-    private void transcribeAudioFile(File audioFile) {
++    private void analyzeEmergencyAudio(File audioFile) {
+         runOnUiThread(() -> {
+-            ans.setText("Checking file...");
++            ans.setText("🔍 Analyzing emergency situation...");
+         });
+ 
+-        // Debug: Check if file exists and is readable
+-        if (audioFile == null) {
+-            runOnUiThread(() -> {
+-                ans.setText("Error: Audio file is null");
+-            });
+-            return;
++        audioProcessor.processEmergencyAudio(audioFile, new EmergencyAudioProcessor.ProcessingCallback() {
++            @Override
++            public void onProcessingComplete(String result) {
++                runOnUiThread(() -> {
++                    if (result.startsWith("Error:")) {
++                        ans.setText("❌ Analysis failed. Please try again.");
++                    } else {
++                        // Automatic emergency handling based on analysis
++                        handleDetectedEmergency(result);
++                    }
++                });
++            }
++        });
++    }
++
++
++    private void handleDetectedEmergency(String analysis) {
++        // AI determines the emergency type and response
++        if (isCriticalEmergency(analysis)) {
++            triggerFullEmergencyResponse(analysis);
++            ans.setText("🚨 CRITICAL EMERGENCY!\n" +
++                    "Help has been notified automatically\n\n" +
++                    "Analysis: " + analysis);
++        } else {
++            // Less critical situation - maybe just log it
++            ans.setText("⚠️ Situation detected:\n" + analysis +
++                    "\n\nMonitoring...");
++            saveIncident(analysis, "non_critical");
+         }
++    }
++
++    private boolean isCriticalEmergency(String analysis) {
++        String lower = analysis.toLowerCase();
++        return lower.contains("help") || lower.contains("emergency") ||
++                lower.contains("accident") || lower.contains("bleeding") ||
++                lower.contains("fire") || lower.contains("hurt") ||
++                lower.contains("police") || lower.contains("ambulance");
++    }
+ 
+-        if (!audioFile.exists()) {
+-            runOnUiThread(() -> {
+-                ans.setText("Error: File doesn't exist: " + audioFile.getAbsolutePath());
+-            });
+-            return;
+-        }
++    private void triggerFullEmergencyResponse(String analysis) {
++        // 1. Notify emergency contacts
++        // 2. Alert authorities if needed
++        // 3. Share location
++        // 4. Save to database
++        saveIncident(analysis, "critical_emergency");
++
++        // Show confirmation to user
++        Toast.makeText(this, "Emergency response activated!", Toast.LENGTH_LONG).show();
++    }
++
++    // NEW: Advanced audio processing method
++    private void processEmergencyRecording(File audioFile) {
++        runOnUiThread(() -> {
++            ans.setText(" Processing emergency audio...");
++        });
+ 
+-        if (!audioFile.canRead()) {
++        // Check if file exists and is readable
++        if (audioFile == null || !audioFile.exists() || !audioFile.canRead()) {
+             runOnUiThread(() -> {
+-                ans.setText("Error: Cannot read file: " + audioFile.getAbsolutePath());
++                ans.setText(" Error: Audio file not accessible");
++                Toast.makeText(this, "Failed to access recording", Toast.LENGTH_SHORT).show();
+             });
+             return;
+         }
+ 
+-        runOnUiThread(() -> {
+-            ans.setText("Transcribing...");
+-        });
+-
+-        new Thread(() -> {
+-            try {
+-                // Log file info for debugging
+-                Log.d("AUDIO_FILE", "File path: " + audioFile.getAbsolutePath());
+-                Log.d("AUDIO_FILE", "File size: " + audioFile.length() + " bytes");
+-                Log.d("AUDIO_FILE", "File exists: " + audioFile.exists());
+-                Log.d("AUDIO_FILE", "File readable: " + audioFile.canRead());
+-
+-                // Convert File to Uri - use FileProvider for better security
+-                Uri audioUri = FileProvider.getUriForFile(
+-                        MainActivity.this,
+-                        getPackageName() + ".provider",
+-                        audioFile
+-                );
+-
+-                Log.d("AUDIO_FILE", "Audio URI: " + audioUri.toString());
+-
+-                // Create instance of AudioTranscriber with context
+-                AudioTranscriber transcriber = new AudioTranscriber(MainActivity.this);
+-                String transcription = transcriber.transcribeAudio(audioUri);
+-
++        // Use the new audio processor
++        audioProcessor.processEmergencyAudio(audioFile, new EmergencyAudioProcessor.ProcessingCallback() {
++            @Override
++            public void onProcessingComplete(String transcription) {
+                 runOnUiThread(() -> {
+-                    ans.setText(transcription);
+-                    Toast.makeText(MainActivity.this, "Transcription completed!", Toast.LENGTH_SHORT).show();
++                    if (transcription.startsWith("Error:")) {
++                        // Fallback to Android speech recognition
++                       // useAndroidSpeechRecognition();
++                    } else {
++                        ans.setText("Transcription:\n" + transcription);
++                        Toast.makeText(MainActivity.this, "Transcription completed!", Toast.LENGTH_SHORT).show();
+ 
+-                    // Save to Firebase after successful transcription
+-                    saveIncident(transcription, "distress_alert");
++                        // Save to Firebase
++                        saveIncident(transcription, "distress_alert");
++
++                        // Advanced analysis
++                        performAdvancedAnalysis(audioFile, transcription);
++                    }
+                 });
++            }
++        });
++    }
++
++    // NEW: Advanced AI analysis
++    private void performAdvancedAnalysis(File audioFile, String transcription) {
++        CompletableFuture.runAsync(() -> {
++            try {
++                String emotionalAnalysis = emergencyAnalyzer.getEmotionalAnalysis(audioFile);
++                boolean hasCriticalSounds = advancedDetector.hasCriticalSoundPatterns(audioFile);
++
++                runOnUiThread(() -> {
++                    String analysisText = "Transcription:\n" + transcription +
++                            "\n\n Emotional State:\n" + emotionalAnalysis +
++                            "\n\n Critical Sounds Detected: " + (hasCriticalSounds ? "YES" : "NO");
++
++                    ans.setText(analysisText);
++                });
++            } catch (Exception e) {
++                Log.e("AdvancedAnalysis", "Failed to perform advanced analysis", e);
++            }
++        });
++    }
+ 
+-            } catch (Exception e) {
+-                Log.e("TRANSCRIPTION", "Error transcribing audio", e);
+-                runOnUiThread(() -> {
+-                    ans.setText("Error: " + e.getMessage());
+-                    Toast.makeText(MainActivity.this, "Transcription failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+-                });
+-            }
+-        }).start();
+-    }
++    // NEW: Android speech recognition fallback
++    /*private void useAndroidSpeechRecognition() {
++        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
++        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
++        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US");
++        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Please describe the emergency situation");
++
++        try {
++            startActivityForResult(intent, SPEECH_RECOGNITION_REQUEST);
++        } catch (Exception e) {
++            runOnUiThread(() -> {
++                ans.setText("🎤 Please speak clearly to describe the emergency");
++                Toast.makeText(this, "Speak now to describe what happened", Toast.LENGTH_LONG).show();
++            });
++        }
++    }*/
+ 
++    @Override
++    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
++        super.onActivityResult(requestCode, resultCode, data);
+ 
++        if (requestCode == SPEECH_RECOGNITION_REQUEST && resultCode == RESULT_OK) {
++            ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
++            if (results != null && !results.isEmpty()) {
++                String transcription = results.get(0);
++                ans.setText("🎤 Speech Recognition:\n" + transcription);
++                saveIncident(transcription, "distress_alert");
++            }
++        }
++    }
+ 
+     private void saveIncident(String transcript, String category) {
+         FirebaseFirestore db = FirebaseFirestore.getInstance();
+@@ -361,38 +428,4 @@
+                 .addOnSuccessListener(doc -> Log.d("FIREBASE", "Saved incident"))
+                 .addOnFailureListener(e -> Log.e("FIREBASE", "Error", e));
+     }
+-
+-
+-   /* private void getSHA1Fingerprint() {
+-        try {
+-            PackageInfo info = getPackageManager().getPackageInfo(
+-                    getPackageName(),
+-                    PackageManager.GET_SIGNATURES);
+-
+-            for (Signature signature : info.signatures) {
+-                MessageDigest md = MessageDigest.getInstance("SHA-1");
+-                md.update(signature.toByteArray());
+-                byte[] digest = md.digest();
+-                String sha1 = Base64.encodeToString(digest, Base64.DEFAULT);
+-
+-                Log.d("SHA-1", "Fingerprint: " + sha1);
+-                // Also convert to the format shown in your image
+-                StringBuilder hexString = new StringBuilder();
+-                for (byte b : digest) {
+-                    hexString.append(String.format("%02X:", b));
+-                }
+-                String formattedSha1 = hexString.toString().substring(0, hexString.length() - 1);
+-                Log.d("SHA-1", "Formatted: " + formattedSha1);
+-
+-                // Show in a Toast or TextView temporarily
+-                runOnUiThread(() -> {
+-                    Toast.makeText(this, "SHA-1: " + formattedSha1, Toast.LENGTH_LONG).show();
+-                    ans.setText("SHA-1: " + formattedSha1); // Display in your TextView
+-                });
+-            }
+-        } catch (PackageManager.NameNotFoundException | NoSuchAlgorithmException e) {
+-            e.printStackTrace();
+-        }
+-    }*/
+-
+ }
+\ No newline at end of file
+Index: app/src/main/java/com/example/hackathonprep/AudioTranscriber.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.example.hackathonprep;\r\n\r\nimport android.content.Context;\r\nimport android.net.Uri;\r\nimport android.os.Build;\r\n\r\nimport java.io.ByteArrayOutputStream;\r\nimport java.io.IOException;\r\nimport java.io.InputStream;\r\nimport java.util.Base64;\r\nimport java.util.Arrays;\r\nimport java.util.List;\r\nimport retrofit2.Retrofit;\r\nimport retrofit2.converter.gson.GsonConverterFactory;\r\nimport okhttp3.OkHttpClient;\r\nimport okhttp3.logging.HttpLoggingInterceptor;\r\nimport retrofit2.Response;\r\n\r\npublic class AudioTranscriber {\r\n    private static final String GEMINI_API_URL = \"https://generativelanguage.googleapis.com/\";\r\n    private static final String API_KEY = \"AIzaSyAmAZMJLmmjdUolKqk_r1V_BW8T6TiP99M\"; // Replace with your actual API key\r\n\r\n    private static Context context;\r\n    private static GeminiApiService geminiApiService;\r\n\r\n    public AudioTranscriber(Context context) {\r\n        AudioTranscriber.context = context.getApplicationContext();\r\n\r\n        // Create Retrofit instance\r\n        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();\r\n        logging.setLevel(HttpLoggingInterceptor.Level.BODY);\r\n\r\n        OkHttpClient client = new OkHttpClient.Builder()\r\n                .addInterceptor(logging)\r\n                .build();\r\n\r\n        Retrofit retrofit = new Retrofit.Builder()\r\n                .baseUrl(GEMINI_API_URL)\r\n                .client(client)\r\n                .addConverterFactory(GsonConverterFactory.create())\r\n                .build();\r\n\r\n        geminiApiService = retrofit.create(GeminiApiService.class);\r\n    }\r\n\r\n    public static String transcribeAudio(Uri audioUri) throws Exception {\r\n        if (context == null) {\r\n            throw new IllegalStateException(\"Context is not initialized\");\r\n        }\r\n\r\n        // Read audio file and convert to base64\r\n        String audioBase64 = readAudioFileToBase64(audioUri);\r\n\r\n        // Check if audio was read successfully\r\n        if (audioBase64 == null || audioBase64.isEmpty()) {\r\n            throw new IOException(\"Failed to read audio file\");\r\n        }\r\n\r\n        // Create prompt for Gemini\r\n        String prompt = \"Transcribe this audio file to text. The audio is encoded in base64: \" + audioBase64;\r\n\r\n        // Create request\r\n        GeminiRequest.Content.Part part = new GeminiRequest.Content.Part(prompt);\r\n        List<GeminiRequest.Content.Part> parts = Arrays.asList(part);\r\n        GeminiRequest.Content content = new GeminiRequest.Content(parts);\r\n        List<GeminiRequest.Content> contents = Arrays.asList(content);\r\n        GeminiRequest request = new GeminiRequest(contents);\r\n\r\n        // Make API call\r\n        String authHeader = \"Bearer \" + API_KEY;\r\n        Response<GeminiResponse> response = geminiApiService\r\n                .generateContent(\"application/json\", authHeader, request)\r\n                .execute();\r\n\r\n        if (response.isSuccessful() && response.body() != null) {\r\n            return response.body().getTranscription();\r\n        } else {\r\n            String errorMessage = \"API call failed: \" + response.message();\r\n            if (response.errorBody() != null) {\r\n                errorMessage += \" - \" + response.errorBody().string();\r\n            }\r\n            throw new Exception(errorMessage);\r\n        }\r\n    }\r\n\r\n    private static String readAudioFileToBase64(Uri audioUri) throws Exception {\r\n        if (context == null) {\r\n            throw new IllegalStateException(\"Context is null!\");\r\n        }\r\n\r\n        try (InputStream inputStream = context.getContentResolver().openInputStream(audioUri);\r\n             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {\r\n\r\n            if (inputStream == null) {\r\n                throw new IOException(\"Cannot open input stream for audio file\");\r\n            }\r\n\r\n            byte[] buffer = new byte[4096];\r\n            int bytesRead;\r\n\r\n            while ((bytesRead = inputStream.read(buffer)) != -1) {\r\n                outputStream.write(buffer, 0, bytesRead);\r\n            }\r\n\r\n            byte[] audioBytes = outputStream.toByteArray();\r\n            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\r\n                return Base64.getEncoder().encodeToString(audioBytes);\r\n           }\r\n        }\r\n        return \"\";\r\n    }\r\n}\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/AudioTranscriber.java b/app/src/main/java/com/example/hackathonprep/AudioTranscriber.java
+--- a/app/src/main/java/com/example/hackathonprep/AudioTranscriber.java	(revision b5df7baf286f41d715ef74e46b1a788e04dcac3f)
++++ b/app/src/main/java/com/example/hackathonprep/AudioTranscriber.java	(date 1756928593507)
+@@ -1,112 +1,45 @@
+ package com.example.hackathonprep;
+ 
++
+ import android.content.Context;
+-import android.net.Uri;
+-import android.os.Build;
+-
+-import java.io.ByteArrayOutputStream;
+-import java.io.IOException;
+-import java.io.InputStream;
+-import java.util.Base64;
+-import java.util.Arrays;
+-import java.util.List;
+-import retrofit2.Retrofit;
+-import retrofit2.converter.gson.GsonConverterFactory;
+-import okhttp3.OkHttpClient;
+-import okhttp3.logging.HttpLoggingInterceptor;
++import okhttp3.MediaType;
++import okhttp3.MultipartBody;
++import okhttp3.RequestBody;
+ import retrofit2.Response;
++import java.io.File;
+ 
+ public class AudioTranscriber {
+-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/";
+-    private static final String API_KEY = "AIzaSyAmAZMJLmmjdUolKqk_r1V_BW8T6TiP99M"; // Replace with your actual API key
+-
+-    private static Context context;
+-    private static GeminiApiService geminiApiService;
++    private final Context context;
++    private final GeminiApiService geminiApiService;
+ 
+-    public AudioTranscriber(Context context) {
+-        AudioTranscriber.context = context.getApplicationContext();
+-
+-        // Create Retrofit instance
+-        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
+-        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
+-
+-        OkHttpClient client = new OkHttpClient.Builder()
+-                .addInterceptor(logging)
+-                .build();
+-
+-        Retrofit retrofit = new Retrofit.Builder()
+-                .baseUrl(GEMINI_API_URL)
+-                .client(client)
+-                .addConverterFactory(GsonConverterFactory.create())
+-                .build();
+-
+-        geminiApiService = retrofit.create(GeminiApiService.class);
++    // CORRECTED CONSTRUCTOR: Add GeminiApiService parameter
++    public AudioTranscriber(Context context, GeminiApiService geminiApiService) {
++        this.context = context.getApplicationContext();
++        this.geminiApiService = geminiApiService; // Now this will work
+     }
+ 
+-    public static String transcribeAudio(Uri audioUri) throws Exception {
+-        if (context == null) {
+-            throw new IllegalStateException("Context is not initialized");
+-        }
+-
+-        // Read audio file and convert to base64
+-        String audioBase64 = readAudioFileToBase64(audioUri);
+-
+-        // Check if audio was read successfully
+-        if (audioBase64 == null || audioBase64.isEmpty()) {
+-            throw new IOException("Failed to read audio file");
+-        }
++    public String transcribeAudioFile(File audioFile, String prompt) throws Exception {
++        RequestBody fileRequestBody = RequestBody.create(
++                MediaType.parse("audio/*"),
++                audioFile
++        );
+ 
+-        // Create prompt for Gemini
+-        String prompt = "Transcribe this audio file to text. The audio is encoded in base64: " + audioBase64;
++        // Create MultipartBody.Part - THIS WAS MISSING
++        MultipartBody.Part filePart = MultipartBody.Part.createFormData(
++                "file",
++                audioFile.getName(),
++                fileRequestBody
++        );
+ 
+-        // Create request
+-        GeminiRequest.Content.Part part = new GeminiRequest.Content.Part(prompt);
+-        List<GeminiRequest.Content.Part> parts = Arrays.asList(part);
+-        GeminiRequest.Content content = new GeminiRequest.Content(parts);
+-        List<GeminiRequest.Content> contents = Arrays.asList(content);
+-        GeminiRequest request = new GeminiRequest(contents);
++        // Emergency-optimized prompt
++        String emergencyPrompt = "EMERGENCY CONTEXT: This is from a safety app. " +
++                "Analyze for distress, danger, or medical emergencies. " + "Be concise but accurate. " + prompt;
+ 
+-        // Make API call
+-        String authHeader = "Bearer " + API_KEY;
+         Response<GeminiResponse> response = geminiApiService
+-                .generateContent("application/json", authHeader, request)
++                .generateContentFromAudio(BuildConfig.GEMINI_API_KEY, filePart, emergencyPrompt)
+                 .execute();
+ 
+-        if (response.isSuccessful() && response.body() != null) {
+-            return response.body().getTranscription();
+-        } else {
+-            String errorMessage = "API call failed: " + response.message();
+-            if (response.errorBody() != null) {
+-                errorMessage += " - " + response.errorBody().string();
+-            }
+-            throw new Exception(errorMessage);
+-        }
+-    }
+-
+-    private static String readAudioFileToBase64(Uri audioUri) throws Exception {
+-        if (context == null) {
+-            throw new IllegalStateException("Context is null!");
+-        }
+-
+-        try (InputStream inputStream = context.getContentResolver().openInputStream(audioUri);
+-             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+-
+-            if (inputStream == null) {
+-                throw new IOException("Cannot open input stream for audio file");
+-            }
+-
+-            byte[] buffer = new byte[4096];
+-            int bytesRead;
+-
+-            while ((bytesRead = inputStream.read(buffer)) != -1) {
+-                outputStream.write(buffer, 0, bytesRead);
+-            }
+-
+-            byte[] audioBytes = outputStream.toByteArray();
+-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+-                return Base64.getEncoder().encodeToString(audioBytes);
+-           }
+-        }
+-        return "";
++
++        return response.body().getTranscription();
+     }
+ }
+Index: app/src/main/java/com/example/hackathonprep/GeminiApiService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.example.hackathonprep;\r\n\r\nimport retrofit2.Call;\r\nimport retrofit2.http.Body;\r\nimport retrofit2.http.Header;\r\nimport retrofit2.http.POST;\r\n\r\npublic interface GeminiApiService {\r\n    @POST(\"v1beta/models/gemini-pro:generateContent\")\r\n    Call<GeminiResponse> generateContent(\r\n            @Header(\"Content-Type\") String contentType,\r\n            @Header(\"Authorization\") String authorization,\r\n            @Body GeminiRequest request\r\n    );\r\n}\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/GeminiApiService.java b/app/src/main/java/com/example/hackathonprep/GeminiApiService.java
+--- a/app/src/main/java/com/example/hackathonprep/GeminiApiService.java	(revision b5df7baf286f41d715ef74e46b1a788e04dcac3f)
++++ b/app/src/main/java/com/example/hackathonprep/GeminiApiService.java	(date 1756675089531)
+@@ -1,15 +1,18 @@
+ package com.example.hackathonprep;
+ 
++import okhttp3.MultipartBody;
+ import retrofit2.Call;
+-import retrofit2.http.Body;
+-import retrofit2.http.Header;
++import retrofit2.http.Multipart;
+ import retrofit2.http.POST;
++import retrofit2.http.Part;
++import retrofit2.http.Query;
+ 
+ public interface GeminiApiService {
+-    @POST("v1beta/models/gemini-pro:generateContent")
+-    Call<GeminiResponse> generateContent(
+-            @Header("Content-Type") String contentType,
+-            @Header("Authorization") String authorization,
+-            @Body GeminiRequest request
++    @Multipart
++    @POST("v1beta/models/gemini-1.5-flash:generateContent")
++    Call<GeminiResponse> generateContentFromAudio(
++            @Query("key") String apiKey,
++            @Part MultipartBody.Part filePart,
++            @Part("prompt") String prompt
+     );
+ }
+Index: app/src/main/java/com/example/hackathonprep/EmergencyAnalyzer.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/EmergencyAnalyzer.java b/app/src/main/java/com/example/hackathonprep/EmergencyAnalyzer.java
+new file mode 100644
+--- /dev/null	(date 1756676878873)
++++ b/app/src/main/java/com/example/hackathonprep/EmergencyAnalyzer.java	(date 1756676878873)
+@@ -0,0 +1,28 @@
++package com.example.hackathonprep;
++
++import android.content.Context;
++import com.example.hackathonprep.GeminiApiService;
++import com.example.hackathonprep.AudioTranscriber;
++import java.io.File;
++
++public class EmergencyAnalyzer {
++    private final AudioTranscriber audioTranscriber;
++
++    // Update constructor to accept API service
++    public EmergencyAnalyzer(Context context, GeminiApiService apiService) {
++        this.audioTranscriber = new AudioTranscriber(context, apiService);
++    }
++
++    public String analyzeEmergency(File audioFile, String emergencyType) throws Exception {
++        String prompt = String.format(
++                "Analyze this %s emergency audio. Return JSON with category, severity, and response actions.",
++                emergencyType
++        );
++        return audioTranscriber.transcribeAudioFile(audioFile, prompt);
++    }
++
++    public String getEmotionalAnalysis(File audioFile) throws Exception {
++        String prompt = "Analyze the emotional state from this audio. Return stress level and confidence.";
++        return audioTranscriber.transcribeAudioFile(audioFile, prompt);
++    }
++}
+Index: app/src/main/java/com/example/hackathonprep/AdvancedEmergencyDetector.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/AdvancedEmergencyDetector.java b/app/src/main/java/com/example/hackathonprep/AdvancedEmergencyDetector.java
+new file mode 100644
+--- /dev/null	(date 1756676838311)
++++ b/app/src/main/java/com/example/hackathonprep/AdvancedEmergencyDetector.java	(date 1756676838311)
+@@ -0,0 +1,42 @@
++package com.example.hackathonprep;
++
++
++import android.content.Context;
++import com.example.hackathonprep.GeminiApiService;
++import com.example.hackathonprep.RetrofitClient;
++import java.io.File;
++import java.util.Arrays;
++import java.util.List;
++
++public class AdvancedEmergencyDetector {
++    private static final List<String> CRITICAL_SOUNDS = Arrays.asList(
++            "scream", "gunshot", "crash", "explosion", "breaking glass"
++    );
++
++    private final EmergencyAnalyzer emergencyAnalyzer;
++
++    // CORRECTED CONSTRUCTOR: Add Context parameter only
++    public AdvancedEmergencyDetector(Context context) {
++        // Get API service from RetrofitClient
++        GeminiApiService apiService = RetrofitClient.getApiService();
++        this.emergencyAnalyzer = new EmergencyAnalyzer(context, apiService);
++    }
++
++    public boolean hasCriticalSoundPatterns(File audioFile) {
++        try {
++            String analysis = emergencyAnalyzer.analyzeEmergency(audioFile, "sound_pattern");
++            String lowerAnalysis = analysis.toLowerCase();
++
++            // Compatible with all Android versions
++            for (String sound : CRITICAL_SOUNDS) {
++                if (lowerAnalysis.contains(sound)) {
++                    return true;
++                }
++            }
++            return false;
++
++        } catch (Exception e) {
++            return false;
++        }
++    }
++}
+\ No newline at end of file
+Index: app/src/main/java/com/example/hackathonprep/EmergencyAudioProcessor.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/EmergencyAudioProcessor.java b/app/src/main/java/com/example/hackathonprep/EmergencyAudioProcessor.java
+new file mode 100644
+--- /dev/null	(date 1756927657094)
++++ b/app/src/main/java/com/example/hackathonprep/EmergencyAudioProcessor.java	(date 1756927657094)
+@@ -0,0 +1,33 @@
++package com.example.hackathonprep;
++
++import android.content.Context;
++import com.example.hackathonprep.RetrofitClient;
++import com.example.hackathonprep.GeminiApiService;
++import java.io.File;
++import java.util.concurrent.CompletableFuture;
++
++public class EmergencyAudioProcessor {
++    private final AudioTranscriber audioTranscriber;
++
++    public EmergencyAudioProcessor(Context context) {
++        GeminiApiService apiService = RetrofitClient.getApiService();
++        this.audioTranscriber = new AudioTranscriber(context, apiService);
++    }
++
++    public void processEmergencyAudio(File audioFile, ProcessingCallback callback) {
++        new Thread(() -> {
++            try {
++                String prompt = "Analyze this audio for emergency situations. " +
++                        "Describe what's happening and identify if it's a critical emergency.";
++                String result = audioTranscriber.transcribeAudioFile(audioFile, prompt);
++                callback.onProcessingComplete(result);
++            } catch (Exception e) {
++                callback.onProcessingComplete("Error: " + e.getMessage());
++            }
++        }).start();
++    }
++
++    public interface ProcessingCallback {
++        void onProcessingComplete(String result);
++    }
++}
+Index: app/src/main/java/com/example/hackathonprep/RetrofitClient.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/RetrofitClient.java b/app/src/main/java/com/example/hackathonprep/RetrofitClient.java
+new file mode 100644
+--- /dev/null	(date 1756676178645)
++++ b/app/src/main/java/com/example/hackathonprep/RetrofitClient.java	(date 1756676178645)
+@@ -0,0 +1,31 @@
++package com.example.hackathonprep;
++
++import retrofit2.Retrofit;
++import retrofit2.converter.gson.GsonConverterFactory;
++import okhttp3.OkHttpClient;
++import okhttp3.logging.HttpLoggingInterceptor;
++
++public class RetrofitClient {
++    private static final String BASE_URL = "https://generativelanguage.googleapis.com/";
++    private static GeminiApiService instance;
++
++    public static GeminiApiService getApiService() {
++        if (instance == null) {
++            HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
++            logging.setLevel(HttpLoggingInterceptor.Level.BODY);
++
++            OkHttpClient client = new OkHttpClient.Builder()
++                    .addInterceptor(logging)
++                    .build();
++
++            Retrofit retrofit = new Retrofit.Builder()
++                    .baseUrl(BASE_URL)
++                    .client(client)
++                    .addConverterFactory(GsonConverterFactory.create())
++                    .build();
++
++            instance = retrofit.create(GeminiApiService.class);
++        }
++        return instance;
++    }
++}
+Index: .idea/deploymentTargetSelector.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"deploymentTargetSelector\">\r\n    <selectionStates>\r\n      <SelectionState runConfigName=\"app\">\r\n        <option name=\"selectionMode\" value=\"DROPDOWN\" />\r\n        <DropdownSelection timestamp=\"2025-08-31T14:43:57.721145600Z\">\r\n          <Target type=\"DEFAULT_BOOT\">\r\n            <handle>\r\n              <DeviceId pluginId=\"LocalEmulator\" identifier=\"path=C:\\Users\\2898909\\.android\\avd\\Medium_Phone.avd\" />\r\n            </handle>\r\n          </Target>\r\n        </DropdownSelection>\r\n        <DialogSelection />\r\n      </SelectionState>\r\n    </selectionStates>\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/deploymentTargetSelector.xml b/.idea/deploymentTargetSelector.xml
+--- a/.idea/deploymentTargetSelector.xml	(revision b5df7baf286f41d715ef74e46b1a788e04dcac3f)
++++ b/.idea/deploymentTargetSelector.xml	(date 1756674406046)
+@@ -4,10 +4,10 @@
+     <selectionStates>
+       <SelectionState runConfigName="app">
+         <option name="selectionMode" value="DROPDOWN" />
+-        <DropdownSelection timestamp="2025-08-31T14:43:57.721145600Z">
++        <DropdownSelection timestamp="2025-08-31T21:05:33.880321500Z">
+           <Target type="DEFAULT_BOOT">
+             <handle>
+-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\2898909\.android\avd\Medium_Phone.avd" />
++              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\Administrator\.android\avd\Medium_Phone.avd" />
+             </handle>
+           </Target>
+         </DropdownSelection>
+Index: app/src/main/java/com/example/hackathonprep/UsageTracker.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/UsageTracker.java b/app/src/main/java/com/example/hackathonprep/UsageTracker.java
+new file mode 100644
+--- /dev/null	(date 1756675421628)
++++ b/app/src/main/java/com/example/hackathonprep/UsageTracker.java	(date 1756675421628)
+@@ -0,0 +1,23 @@
++package com.example.hackathonprep;
++
++
++import java.util.ArrayList;
++import java.util.List;
++
++public class UsageTracker {
++    private static final int MAX_REQUESTS_PER_MINUTE = 60;
++    private static final List<Long> requestTimestamps = new ArrayList<>();
++
++    public static synchronized boolean canMakeRequest() {
++        long currentTime = System.currentTimeMillis();
++        long oneMinuteAgo = currentTime - 60000;
++
++        requestTimestamps.removeIf(timestamp -> timestamp < oneMinuteAgo);
++
++        if (requestTimestamps.size() < MAX_REQUESTS_PER_MINUTE) {
++            requestTimestamps.add(currentTime);
++            return true;
++        }
++        return false;
++    }
++}
+\ No newline at end of file

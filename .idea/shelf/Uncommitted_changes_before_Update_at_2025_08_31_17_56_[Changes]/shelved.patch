@@ -1,0 +1,359 @@
+Index: build.gradle.kts
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>// Top-level build file where you can add configuration options common to all sub-projects/modules.\r\nplugins {\r\n    alias(libs.plugins.android.application) apply false\r\n    id(\"com.google.gms.google-services\") version \"4.4.3\" apply false\r\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/build.gradle.kts b/build.gradle.kts
+--- a/build.gradle.kts	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/build.gradle.kts	(date 1756634999663)
+@@ -2,4 +2,4 @@
+ plugins {
+     alias(libs.plugins.android.application) apply false
+     id("com.google.gms.google-services") version "4.4.3" apply false
+-}
+\ No newline at end of file
++}
+Index: app/src/main/java/com/example/hackathonprep/MainActivity.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.example.hackathonprep;\r\n\r\nimport android.Manifest;\r\nimport android.content.pm.PackageManager;\r\nimport android.media.AudioFormat;\r\nimport android.media.AudioRecord;\r\nimport android.media.MediaRecorder;\r\nimport android.os.Bundle;\r\nimport android.os.CountDownTimer;\r\nimport android.os.Handler;\r\nimport android.util.Log;\r\nimport android.view.View;\r\nimport android.widget.Button;\r\nimport android.widget.Toast;\r\n\r\nimport androidx.activity.EdgeToEdge;\r\nimport androidx.appcompat.app.AlertDialog;\r\nimport androidx.appcompat.app.AppCompatActivity;\r\nimport androidx.core.app.ActivityCompat;\r\nimport androidx.core.graphics.Insets;\r\nimport androidx.core.view.ViewCompat;\r\nimport androidx.core.view.WindowInsetsCompat;\r\n\r\nimport java.io.File;\r\nimport java.io.FileOutputStream;\r\nimport java.io.IOException;\r\nimport java.io.InputStream;\r\nimport java.util.Date;\r\nimport java.util.HashMap;\r\nimport java.util.Map;\r\nimport java.util.concurrent.Executors;\r\n\r\nimport com.example.hackathonprep.BuildConfig;\r\nimport ai.picovoice.porcupine.Porcupine;\r\nimport ai.picovoice.porcupine.PorcupineException;\r\n\r\n\r\nimport com.google.ai.client.generativeai.GenerativeModel;\r\nimport com.google.ai.client.generativeai.type.Content;\r\nimport com.google.ai.client.generativeai.type.GenerateContentResponse;\r\n\r\nimport com.google.firebase.auth.FirebaseAuth;\r\nimport com.google.firebase.firestore.FirebaseFirestore;\r\n\r\n\r\n\r\npublic class MainActivity extends AppCompatActivity {\r\n    private Porcupine porcupine;\r\n    private AudioRecord audioRecord;\r\n    private boolean isListening = false;\r\n    private Thread recordingThread;\r\n    private Button dangerButton;\r\n    private static final int REQUEST_RECORD_AUDIO = 1;\r\n    private CountDownTimer timer;\r\n\r\n    private MediaRecorder recorder;\r\n    private File audioFile;\r\n    String geminiApiKey = BuildConfig.GEMINI_API_KEY;\r\n\r\n    @Override\r\n    protected void onCreate(Bundle savedInstanceState) {\r\n        super.onCreate(savedInstanceState);\r\n        EdgeToEdge.enable(this);\r\n        setContentView(R.layout.activity_main);\r\n        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {\r\n            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());\r\n            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);\r\n            return insets;\r\n        });\r\n\r\n        dangerButton = findViewById(R.id.dangerButton);\r\n\r\n\r\n\r\n        dangerButton.setOnClickListener(new View.OnClickListener() {\r\n            @Override\r\n            public void onClick(View view)\r\n            {\r\n                //TODO: alert the community or something i donno\r\n                Toast.makeText(MainActivity.this, \"Safeword detected! Triggering danger action!\", Toast.LENGTH_LONG).show();\r\n            }\r\n        });\r\n        // Request microphone permission\r\n        ActivityCompat.requestPermissions(this,\r\n                new String[]{Manifest.permission.RECORD_AUDIO},\r\n                REQUEST_RECORD_AUDIO);\r\n\r\n        try {\r\n            // Initialize Porcupine with your safeword model\r\n            porcupine = new Porcupine.Builder()\r\n                    .setAccessKey(\"oUD1Hs9X9838Yhni2sjw+n8aaWXSZBzB11dC/xXLZkXB7VK+GaA0LQ==\")\r\n                    .setKeywordPath(getAssetPath(\"GuardianHelp.ppn\"))\r\n                    .setSensitivity(1f)\r\n                    .build(this);\r\n\r\n\r\n            startWakeWordDetection();\r\n\r\n        } catch (PorcupineException e) {\r\n            e.printStackTrace();\r\n        }\r\n    }\r\n\r\n    private void startWakeWordDetection() {\r\n        int bufferSize = AudioRecord.getMinBufferSize(\r\n                porcupine.getSampleRate(),\r\n                AudioFormat.CHANNEL_IN_MONO,\r\n                AudioFormat.ENCODING_PCM_16BIT);\r\n\r\n        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {\r\n            // TODO: Consider calling\r\n            //    ActivityCompat#requestPermissions\r\n            // here to request the missing permissions, and then overriding\r\n            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,\r\n            //                                          int[] grantResults)\r\n            // to handle the case where the user grants the permission. See the documentation\r\n            // for ActivityCompat#requestPermissions for more details.\r\n            return;\r\n        }\r\n        audioRecord = new AudioRecord(\r\n                MediaRecorder.AudioSource.MIC,\r\n                porcupine.getSampleRate(),\r\n                AudioFormat.CHANNEL_IN_MONO,\r\n                AudioFormat.ENCODING_PCM_16BIT,\r\n                bufferSize);\r\n\r\n        audioRecord.startRecording();\r\n        isListening = true;\r\n\r\n        recordingThread = new Thread(() -> {\r\n            short[] buffer = new short[porcupine.getFrameLength()];\r\n            while (isListening) {\r\n                int result = audioRecord.read(buffer, 0, buffer.length);\r\n                if (result > 0) {\r\n                    try {\r\n                        int keywordIndex = porcupine.process(buffer);\r\n                        if (keywordIndex >= 0) {\r\n                            runOnUiThread(() -> triggerDangerButton());\r\n                        }\r\n                    } catch (PorcupineException e) {\r\n                        e.printStackTrace();\r\n                    }\r\n                }\r\n            }\r\n        });\r\n        recordingThread.setPriority(Thread.MAX_PRIORITY);\r\n        recordingThread.start();\r\n    }\r\n    private String getAssetPath(String assetFileName) {\r\n        File file = new File(getFilesDir(), assetFileName);\r\n        if (!file.exists()) {\r\n            try (InputStream is = getAssets().open(assetFileName);\r\n                 FileOutputStream os = new FileOutputStream(file)) {\r\n                byte[] buffer = new byte[1024];\r\n                int length;\r\n                while ((length = is.read(buffer)) > 0) {\r\n                    os.write(buffer, 0, length);\r\n                }\r\n            } catch (IOException e) {\r\n                e.printStackTrace();\r\n            }\r\n        }\r\n        return file.getAbsolutePath();\r\n    }\r\n\r\n\r\n    private void triggerDangerButton() {\r\n        //Toast.makeText(MainActivity.this, \"Safeword detected! Triggering danger action!\", Toast.LENGTH_LONG).show();\r\n        dangerButton.performClick();\r\n        onWakeWordDetected();\r\n    }\r\n\r\n    protected void onDestroy() {\r\n        super.onDestroy();\r\n        isListening = false;\r\n        if (audioRecord != null) {\r\n            audioRecord.stop();\r\n            audioRecord.release();\r\n        }\r\n        if (porcupine != null) {\r\n            porcupine.delete();\r\n        }\r\n    }\r\n    private void onWakeWordDetected() {\r\n        long countdownMillis = 5000; // 5 seconds\r\n\r\n        AlertDialog.Builder builder = new AlertDialog.Builder(this);\r\n        builder.setTitle(\"Distress Alert\");\r\n        builder.setMessage(\"Distress alert will be sent in 5 seconds.\\nTap CANCEL to stop.\");\r\n        builder.setCancelable(false);\r\n\r\n        builder.setNegativeButton(\"CANCEL\", (dialog, which) -> {\r\n            if (timer != null) {\r\n                timer.cancel(); // stop the countdown\r\n            }\r\n            dialog.dismiss();\r\n            Toast.makeText(MainActivity.this, \"Alert canceled.\", Toast.LENGTH_SHORT).show();\r\n        });\r\n\r\n        AlertDialog alertDialog = builder.create();\r\n\r\n        timer = new CountDownTimer(countdownMillis, 1000) {\r\n            @Override\r\n            public void onTick(long millisUntilFinished) {\r\n                alertDialog.setMessage(\r\n                        \"Distress alert will be sent in \" + (millisUntilFinished / 1000) + \" seconds.\\nTap CANCEL to stop.\"\r\n                );\r\n            }\r\n\r\n            @Override\r\n            public void onFinish() {\r\n                alertDialog.dismiss();\r\n                //sendDistressAlert(message);\r\n            }\r\n        };\r\n\r\n        alertDialog.show();\r\n        timer.start();\r\n    }\r\n\r\n    private void startRecording() {\r\n        try {\r\n            audioFile = new File(getExternalFilesDir(null), \"distress_audio.wav\");\r\n\r\n            recorder = new MediaRecorder();\r\n            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);\r\n            recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);\r\n            recorder.setOutputFile(audioFile.getAbsolutePath());\r\n            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);\r\n\r\n            recorder.prepare();\r\n            recorder.start();\r\n\r\n            // Record for 10 sec then stop\r\n            new Handler().postDelayed(this::stopRecording, 10000);\r\n\r\n        } catch (IOException e) {\r\n            e.printStackTrace();\r\n        }\r\n    }\r\n\r\n    private void stopRecording() {\r\n        recorder.stop();\r\n        recorder.release();\r\n        recorder = null;\r\n\r\n        //call Gemini\r\n        analyzeDistressAudio(audioFile);\r\n    }\r\n\r\n\r\n\r\n    private void analyzeDistressAudio(File audioFile) {\r\n        Executors.newSingleThreadExecutor().execute(() -> {\r\n            try {\r\n                GenerativeModel model = new GenerativeModel(\r\n                        \"gemini-1.5-pro\",\r\n                        BuildConfig.GEMINI_API_KEY\r\n                );\r\n\r\n                // Step 1: Transcribe audio\r\n                Content transcriptRequest = new Content.Builder()\r\n                        .addPart(Part.fromText(\"Please transcribe this audio:\"))\r\n                        .addPart(Part.fromFile(audioFile))   // attaches the audio file\r\n                        .build();\r\n\r\n                GenerateContentResponse transcriptResponse = model.generateContent(transcriptRequest);\r\n                String transcript = transcriptResponse.getText();\r\n\r\n                // Step 2: Classify transcript\r\n                String classifyPrompt =\r\n                        \"Classify the following into one of [GBV/Assault, Robbery, Harassment, Other]:\\n\" + transcript;\r\n\r\n                Content classifyRequest = new Content.Builder()\r\n                        .addPart(Part.fromText(classifyPrompt))\r\n                        .build();\r\n\r\n                GenerateContentResponse classResponse = model.generateContent(classifyRequest);\r\n                String category = classResponse.getText();\r\n\r\n                // Step 3: Save to Firestore\r\n                saveIncident(transcript, category);\r\n\r\n            } catch (Exception e) {\r\n                e.printStackTrace();\r\n            }\r\n        });\r\n    }\r\n\r\n\r\n    private void saveIncident(String transcript, String category) {\r\n        FirebaseFirestore db = FirebaseFirestore.getInstance();\r\n\r\n        Map<String, Object> incident = new HashMap<>();\r\n        incident.put(\"transcript\", transcript);\r\n        incident.put(\"category\", category);\r\n        incident.put(\"timestamp\", new Date());\r\n        incident.put(\"userId\", FirebaseAuth.getInstance().getUid());\r\n\r\n        db.collection(\"incidents\").add(incident)\r\n                .addOnSuccessListener(doc -> Log.d(\"FIREBASE\", \"Saved incident\"))\r\n                .addOnFailureListener(e -> Log.e(\"FIREBASE\", \"Error\", e));\r\n    }\r\n\r\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/hackathonprep/MainActivity.java b/app/src/main/java/com/example/hackathonprep/MainActivity.java
+--- a/app/src/main/java/com/example/hackathonprep/MainActivity.java	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/app/src/main/java/com/example/hackathonprep/MainActivity.java	(date 1756648856595)
+@@ -1,6 +1,7 @@
+ package com.example.hackathonprep;
+ 
+ import android.Manifest;
++
+ import android.content.pm.PackageManager;
+ import android.media.AudioFormat;
+ import android.media.AudioRecord;
+@@ -11,6 +12,7 @@
+ import android.util.Log;
+ import android.view.View;
+ import android.widget.Button;
++import android.widget.TextView;
+ import android.widget.Toast;
+ 
+ import androidx.activity.EdgeToEdge;
+@@ -28,34 +30,38 @@
+ import java.util.Date;
+ import java.util.HashMap;
+ import java.util.Map;
+-import java.util.concurrent.Executors;
+ 
+-import com.example.hackathonprep.BuildConfig;
++
+ import ai.picovoice.porcupine.Porcupine;
+ import ai.picovoice.porcupine.PorcupineException;
+ 
+ 
++
++import com.google.ai.client.generativeai.java.GenerativeModelFutures;
++
+ import com.google.ai.client.generativeai.GenerativeModel;
+-import com.google.ai.client.generativeai.type.Content;
+-import com.google.ai.client.generativeai.type.GenerateContentResponse;
+-
+ import com.google.firebase.auth.FirebaseAuth;
+ import com.google.firebase.firestore.FirebaseFirestore;
+ 
+ 
+ 
++
+ public class MainActivity extends AppCompatActivity {
+     private Porcupine porcupine;
+     private AudioRecord audioRecord;
+     private boolean isListening = false;
+     private Thread recordingThread;
+     private Button dangerButton;
++    private TextView ans;
+     private static final int REQUEST_RECORD_AUDIO = 1;
+     private CountDownTimer timer;
+ 
+     private MediaRecorder recorder;
+     private File audioFile;
+     String geminiApiKey = BuildConfig.GEMINI_API_KEY;
++    private GenerativeModelFutures modelFutures; // Add this member variable
++
++
+ 
+     @Override
+     protected void onCreate(Bundle savedInstanceState) {
+@@ -69,6 +75,7 @@
+         });
+ 
+         dangerButton = findViewById(R.id.dangerButton);
++        ans = findViewById(R.id.textView);
+ 
+ 
+ 
+@@ -76,8 +83,10 @@
+             @Override
+             public void onClick(View view)
+             {
++                ans.setText("");
+                 //TODO: alert the community or something i donno
+                 Toast.makeText(MainActivity.this, "Safeword detected! Triggering danger action!", Toast.LENGTH_LONG).show();
++
+             }
+         });
+         // Request microphone permission
+@@ -99,6 +108,20 @@
+         } catch (PorcupineException e) {
+             e.printStackTrace();
+         }
++
++        if (geminiApiKey != null && !geminiApiKey.isEmpty() && !geminiApiKey.equals("YOUR_API_KEY")) {
++            GenerativeModel gm = new GenerativeModel(
++                    "gemini-1.5-pro-latest", // Using "gemini-1.5-pro-latest" is often a good choice
++                    geminiApiKey
++            );
++            this.modelFutures = GenerativeModelFutures.from(gm);
++        } else {
++            Log.e("GEMINI_SETUP", "Gemini API Key is not configured correctly.");
++            Toast.makeText(this, "Gemini API Key not configured.", Toast.LENGTH_LONG).show();
++            // Handle the case where API key is missing (e.g., disable features)
++        }
++
++
+     }
+ 
+     private void startWakeWordDetection() {
+@@ -210,6 +233,7 @@
+             @Override
+             public void onFinish() {
+                 alertDialog.dismiss();
++                startRecording();
+                 //sendDistressAlert(message);
+             }
+         };
+@@ -231,8 +255,8 @@
+             recorder.prepare();
+             recorder.start();
+ 
+-            // Record for 10 sec then stop
+-            new Handler().postDelayed(this::stopRecording, 10000);
++            // Record for 30 sec then stop
++            new Handler().postDelayed(this::stopRecording, 30000);
+ 
+         } catch (IOException e) {
+             e.printStackTrace();
+@@ -245,47 +269,16 @@
+         recorder = null;
+ 
+         //call Gemini
+-        analyzeDistressAudio(audioFile);
++        //analyzeDistressAudio(audioFile);
+     }
++
+ 
+ 
+ 
+-    private void analyzeDistressAudio(File audioFile) {
+-        Executors.newSingleThreadExecutor().execute(() -> {
+-            try {
+-                GenerativeModel model = new GenerativeModel(
+-                        "gemini-1.5-pro",
+-                        BuildConfig.GEMINI_API_KEY
+-                );
+-
+-                // Step 1: Transcribe audio
+-                Content transcriptRequest = new Content.Builder()
+-                        .addPart(Part.fromText("Please transcribe this audio:"))
+-                        .addPart(Part.fromFile(audioFile))   // attaches the audio file
+-                        .build();
+-
+-                GenerateContentResponse transcriptResponse = model.generateContent(transcriptRequest);
+-                String transcript = transcriptResponse.getText();
+-
+-                // Step 2: Classify transcript
+-                String classifyPrompt =
+-                        "Classify the following into one of [GBV/Assault, Robbery, Harassment, Other]:\n" + transcript;
+-
+-                Content classifyRequest = new Content.Builder()
+-                        .addPart(Part.fromText(classifyPrompt))
+-                        .build();
+-
+-                GenerateContentResponse classResponse = model.generateContent(classifyRequest);
+-                String category = classResponse.getText();
+-
+-                // Step 3: Save to Firestore
+-                saveIncident(transcript, category);
++        private void analyzeDistressAudio(File audioFile) {
+ 
+-            } catch (Exception e) {
+-                e.printStackTrace();
+-            }
+-        });
+-    }
++        }
++
+ 
+ 
+     private void saveIncident(String transcript, String category) {
+@@ -302,4 +295,5 @@
+                 .addOnFailureListener(e -> Log.e("FIREBASE", "Error", e));
+     }
+ 
++
+ }
+\ No newline at end of file
+Index: app/src/main/res/layout/activity_main.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<androidx.constraintlayout.widget.ConstraintLayout xmlns:android=\"http://schemas.android.com/apk/res/android\"\r\n    xmlns:app=\"http://schemas.android.com/apk/res-auto\"\r\n    xmlns:tools=\"http://schemas.android.com/tools\"\r\n    android:id=\"@+id/main\"\r\n    android:layout_width=\"match_parent\"\r\n    android:layout_height=\"match_parent\"\r\n    tools:context=\".MainActivity\">\r\n\r\n    <Button\r\n        android:id=\"@+id/dangerButton\"\r\n        android:layout_width=\"wrap_content\"\r\n        android:layout_height=\"wrap_content\"\r\n        android:text=\"Button\"\r\n        app:layout_constraintBottom_toBottomOf=\"parent\"\r\n        app:layout_constraintEnd_toEndOf=\"parent\"\r\n        app:layout_constraintStart_toStartOf=\"parent\"\r\n        app:layout_constraintTop_toTopOf=\"parent\" />\r\n\r\n</androidx.constraintlayout.widget.ConstraintLayout>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
+--- a/app/src/main/res/layout/activity_main.xml	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/app/src/main/res/layout/activity_main.xml	(date 1756639642843)
+@@ -17,4 +17,16 @@
+         app:layout_constraintStart_toStartOf="parent"
+         app:layout_constraintTop_toTopOf="parent" />
+ 
++    <TextView
++        android:id="@+id/textView"
++        android:layout_width="200dp"
++        android:layout_height="161dp"
++        android:text="TextView"
++        app:layout_constraintBottom_toBottomOf="parent"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintHorizontal_bias="0.498"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@+id/dangerButton"
++        app:layout_constraintVertical_bias="0.192" />
++
+ </androidx.constraintlayout.widget.ConstraintLayout>
+\ No newline at end of file
+Index: app/src/main/res/values/strings.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><resources>\r\n    <string name=\"app_name\">Hackathon Prep</string>\r\n</resources>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+--- a/app/src/main/res/values/strings.xml	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/app/src/main/res/values/strings.xml	(date 1756641163920)
+@@ -1,3 +1,3 @@
+ <resources>
+-    <string name="app_name">Hackathon Prep</string>
++    <string name="app_name">Your App Name</string>
+ </resources>
+\ No newline at end of file
+Index: app/build.gradle.kts
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import org.gradle.initialization.Environment\r\nimport java.io.FileInputStream\r\nimport java.util.Properties\r\n\r\nplugins {\r\n    alias(libs.plugins.android.application)\r\n    id(\"com.google.gms.google-services\")\r\n}\r\n\r\nval localProperties = Properties();\r\nval localPropertiesFile = rootProject.file(\"local.properties\")\r\nif (localPropertiesFile.exists()) {\r\n    localProperties.load(FileInputStream(localPropertiesFile))\r\n}\r\nval apiKey = localProperties.getProperty(\"GEMINI_API_KEY\") ?: System.getenv(\"GEMINI_API_KEY\") ?: \"\"\r\n\r\nandroid {\r\n    namespace = \"com.example.hackathonprep\"\r\n    compileSdk = 36\r\n\r\n    defaultConfig {\r\n        applicationId = \"com.example.hackathonprep\"\r\n        minSdk = 24\r\n        targetSdk = 36\r\n        versionCode = 1\r\n        versionName = \"1.0\"\r\n\r\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\r\n\r\n        buildConfigField(\"String\", \"GEMINI_API_KEY\", \"\\\"$apiKey\\\"\")\r\n\r\n\r\n\r\n    }\r\n\r\n    buildTypes {\r\n        release {\r\n            isMinifyEnabled = false\r\n            proguardFiles(\r\n                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\r\n                \"proguard-rules.pro\"\r\n            )\r\n        }\r\n    }\r\n    compileOptions {\r\n        sourceCompatibility = JavaVersion.VERSION_11\r\n        targetCompatibility = JavaVersion.VERSION_11\r\n    }\r\n\r\n\r\n}\r\n\r\ndependencies {\r\n\r\n    implementation(libs.appcompat)\r\n    implementation(libs.material)\r\n    implementation(libs.activity)\r\n    implementation(libs.constraintlayout)\r\n    implementation(libs.generativeai)\r\n    implementation(libs.firebase.firestore)\r\n    implementation(libs.firebase.auth)\r\n    testImplementation(libs.junit)\r\n    androidTestImplementation(libs.ext.junit)\r\n    androidTestImplementation(libs.espresso.core)\r\n    implementation(\"ai.picovoice:porcupine-android:3.0.1\")\r\n    implementation(\"com.google.firebase:firebase-bom:34.2.0\")\r\n    implementation(\"com.google.firebase:firebase-analytics:23.0.0\")\r\n    implementation (\"com.google.firebase:firebase-firestore\")\r\n    implementation (\"com.google.firebase:firebase-auth\")\r\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/app/build.gradle.kts	(date 1756646209334)
+@@ -1,4 +1,3 @@
+-import org.gradle.initialization.Environment
+ import java.io.FileInputStream
+ import java.util.Properties
+ 
+@@ -20,18 +19,17 @@
+ 
+     defaultConfig {
+         applicationId = "com.example.hackathonprep"
+-        minSdk = 24
++        minSdk = 26
+         targetSdk = 36
+         versionCode = 1
+         versionName = "1.0"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+-
++        android.buildFeatures.buildConfig = true
+         buildConfigField("String", "GEMINI_API_KEY", "\"$apiKey\"")
+ 
+-
++    }
+ 
+-    }
+ 
+     buildTypes {
+         release {
+@@ -56,15 +54,16 @@
+     implementation(libs.material)
+     implementation(libs.activity)
+     implementation(libs.constraintlayout)
+-    implementation(libs.generativeai)
+     implementation(libs.firebase.firestore)
+     implementation(libs.firebase.auth)
++    implementation(libs.common)
+     testImplementation(libs.junit)
+     androidTestImplementation(libs.ext.junit)
+     androidTestImplementation(libs.espresso.core)
+     implementation("ai.picovoice:porcupine-android:3.0.1")
+-    implementation("com.google.firebase:firebase-bom:34.2.0")
++    implementation(platform("com.google.firebase:firebase-bom:34.2.0"))
+     implementation("com.google.firebase:firebase-analytics:23.0.0")
+-    implementation ("com.google.firebase:firebase-firestore")
+-    implementation ("com.google.firebase:firebase-auth")
++    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
++    implementation("com.google.ai.client.generativeai:generativeai")
++
+ }
+\ No newline at end of file
+Index: gradle/libs.versions.toml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>[versions]\r\nagp = \"8.12.2\"\r\njunit = \"4.13.2\"\r\njunitVersion = \"1.1.5\"\r\nespressoCore = \"3.5.1\"\r\nappcompat = \"1.6.1\"\r\nmaterial = \"1.10.0\"\r\nactivity = \"1.8.0\"\r\nconstraintlayout = \"2.1.4\"\r\ngenerativeai = \"0.9.0\"\r\nfirebaseFirestore = \"26.0.0\"\r\nfirebaseAuth = \"24.0.1\"\r\n\r\n[libraries]\r\njunit = { group = \"junit\", name = \"junit\", version.ref = \"junit\" }\r\next-junit = { group = \"androidx.test.ext\", name = \"junit\", version.ref = \"junitVersion\" }\r\nespresso-core = { group = \"androidx.test.espresso\", name = \"espresso-core\", version.ref = \"espressoCore\" }\r\nappcompat = { group = \"androidx.appcompat\", name = \"appcompat\", version.ref = \"appcompat\" }\r\nmaterial = { group = \"com.google.android.material\", name = \"material\", version.ref = \"material\" }\r\nactivity = { group = \"androidx.activity\", name = \"activity\", version.ref = \"activity\" }\r\nconstraintlayout = { group = \"androidx.constraintlayout\", name = \"constraintlayout\", version.ref = \"constraintlayout\" }\r\ngenerativeai = { group = \"com.google.ai.client.generativeai\", name = \"generativeai\", version.ref = \"generativeai\" }\r\nfirebase-firestore = { group = \"com.google.firebase\", name = \"firebase-firestore\", version.ref = \"firebaseFirestore\" }\r\nfirebase-auth = { group = \"com.google.firebase\", name = \"firebase-auth\", version.ref = \"firebaseAuth\" }\r\n\r\n[plugins]\r\nandroid-application = { id = \"com.android.application\", version.ref = \"agp\" }\r\n\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+--- a/gradle/libs.versions.toml	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/gradle/libs.versions.toml	(date 1756646209291)
+@@ -10,6 +10,7 @@
+ generativeai = "0.9.0"
+ firebaseFirestore = "26.0.0"
+ firebaseAuth = "24.0.1"
++common = "0.10.0"
+ 
+ [libraries]
+ junit = { group = "junit", name = "junit", version.ref = "junit" }
+@@ -22,6 +23,7 @@
+ generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeai" }
+ firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore", version.ref = "firebaseFirestore" }
+ firebase-auth = { group = "com.google.firebase", name = "firebase-auth", version.ref = "firebaseAuth" }
++common = { group = "com.google.ai.client.generativeai", name = "common", version.ref = "common" }
+ 
+ [plugins]
+ android-application = { id = "com.android.application", version.ref = "agp" }
+Index: settings.gradle.kts
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>pluginManagement {\r\n    repositories {\r\n        google {\r\n            content {\r\n                includeGroupByRegex(\"com\\\\.android.*\")\r\n                includeGroupByRegex(\"com\\\\.google.*\")\r\n                includeGroupByRegex(\"androidx.*\")\r\n            }\r\n        }\r\n        mavenCentral()\r\n        gradlePluginPortal()\r\n    }\r\n}\r\ndependencyResolutionManagement {\r\n    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)\r\n    repositories {\r\n        google()\r\n        mavenCentral()\r\n    }\r\n}\r\n\r\nrootProject.name = \"Hackathon Prep\"\r\ninclude(\":app\")\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/settings.gradle.kts b/settings.gradle.kts
+--- a/settings.gradle.kts	(revision 7e1bf1ce52887d4533c219f50a67ce4ee87b1b53)
++++ b/settings.gradle.kts	(date 1756643528860)
+@@ -1,12 +1,6 @@
+ pluginManagement {
+     repositories {
+-        google {
+-            content {
+-                includeGroupByRegex("com\\.android.*")
+-                includeGroupByRegex("com\\.google.*")
+-                includeGroupByRegex("androidx.*")
+-            }
+-        }
++        google()
+         mavenCentral()
+         gradlePluginPortal()
+     }

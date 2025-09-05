@@ -8,15 +8,16 @@ import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
-import android.net.Uri;
 import android.os.Bundle;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 
 import android.os.CountDownTimer;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -25,104 +26,69 @@ import android.widget.Button;
 import android.widget.Toast;
 
 import com.example.hackathonprep.BuildConfig;
-import com.example.hackathonprep.MainActivity;
 import com.example.hackathonprep.R;
 import com.google.ai.client.generativeai.GenerativeModel;
 import com.google.ai.client.generativeai.java.GenerativeModelFutures;
 import com.google.ai.client.generativeai.type.Content;
 import com.google.ai.client.generativeai.type.GenerateContentResponse;
+import com.google.android.gms.tasks.Continuation;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageMetadata;
 import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import ai.picovoice.porcupine.Porcupine;
 import ai.picovoice.porcupine.PorcupineException;
 
-/**
- * A simple {@link Fragment} subclass.
- * Use the {@link SOSFragment#newInstance} factory method to
- * create an instance of this fragment.
- */
+
 public class SOSFragment extends Fragment {
 
-    // TODO: Rename parameter arguments, choose names that match
-    // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER
-    private static final String ARG_PARAM1 = "param1";
-    private static final String ARG_PARAM2 = "param2";
+    private static final String TAG = "SOS";
 
-    // TODO: Rename and change types of parameters
-    private String mParam1;
-    private String mParam2;
+    // Wake-word (Porcupine) mic
     private Porcupine porcupine;
-    private AudioRecord audioRecord;
-    private boolean isListening = false;
+    private AudioRecord hotwordRecord;
+    private Thread hotwordThread;
+    private volatile boolean isListening = false;
+
+    // Recorder mic
+    private AudioRecord micRecord;
     private Thread recordingThread;
+    private volatile boolean isRecording = false;
+
     private CountDownTimer timer;
+    private Handler mainHandler;
 
-    private boolean isRecording = false;
-    private File wavFile;
+    // In-memory buffer for PCM while recording
+    private ByteArrayOutputStream pcmBuffer;
 
-    // AI Components
+    // Audio config
+    private static final int SAMPLE_RATE = 16000;
+    private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
+    private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
+
+    // AI (kept as you had it)
     private GenerativeModel generativeModel;
     private GenerativeModelFutures model;
-    private Button dangerButton;
 
-    Button SOSbtn = getView().findViewById(R.id.btnSOS);
-
-
-    public SOSFragment() {
-        // Required empty public constructor
-    }
-
-    /**
-     * Use this factory method to create a new instance of
-     * this fragment using the provided parameters.
-     *
-     * @param param1 Parameter 1.
-     * @param param2 Parameter 2.
-     * @return A new instance of fragment SOSFragment.
-     */
-    // TODO: Rename and change types and number of parameters
-    public static SOSFragment newInstance(String param1, String param2) {
-        SOSFragment fragment = new SOSFragment();
-        Bundle args = new Bundle();
-        args.putString(ARG_PARAM1, param1);
-        args.putString(ARG_PARAM2, param2);
-        fragment.setArguments(args);
-        return fragment;
-    }
+    private Button SOSbtn;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (getArguments() != null) {
-            mParam1 = getArguments().getString(ARG_PARAM1);
-            mParam2 = getArguments().getString(ARG_PARAM2);
-        }
-
-        SOSbtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Toast.makeText(getContext(), "Safeword detected! Triggering danger action!", Toast.LENGTH_LONG).show();
-                startWavRecording();
-            }
-        });
-
+        mainHandler = new Handler(Looper.getMainLooper());
         initializeAIModel();
 
         ActivityCompat.requestPermissions(requireActivity(),
@@ -130,7 +96,6 @@ public class SOSFragment extends Fragment {
                 REQUEST_RECORD_AUDIO);
 
         try {
-            // Initialize Porcupine with your safeword model
             porcupine = new Porcupine.Builder()
                     .setAccessKey(ACCESS_KEY)
                     .setKeywordPath(getAssetPath("GuardianHelp.ppn"))
@@ -138,278 +103,112 @@ public class SOSFragment extends Fragment {
                     .build(getContext());
 
             startWakeWordDetection();
-
         } catch (PorcupineException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Porcupine init failed", e);
         }
-
-
     }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        // Inflate the layout for this fragment
-        return inflater.inflate(R.layout.fragment_sos, container, false);
+        View root = inflater.inflate(R.layout.fragment_sos, container, false);
+        SOSbtn = root.findViewById(R.id.btnSOS);
+        SOSbtn.setOnClickListener(v -> onWakeWordDetected());
+        return root;
     }
 
-    private void startWavRecording() {
-        int sampleRate = 16000;
-        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-        int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startWakeWordDetection();
+            } else {
+                Toast.makeText(getContext(), "Microphone permission is required for SOS", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
 
-        int bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+    // ================= Wake Word =================
+    private void startWakeWordDetection() {
+        if (porcupine == null) return;
         if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             return;
         }
-        audioRecord = new AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                channelConfig,
-                audioFormat,
-                bufferSize
-        );
 
-        wavFile = new File(getExternalFilesDir(null),
-                "emergency_recording_" + System.currentTimeMillis() + ".wav");
-
-        audioRecord.startRecording();
-        isRecording = true;
-
-        new Thread(() -> writeAudioDataToWavFile(wavFile, bufferSize, sampleRate)).start();
-
-       // runOnUiThread(() -> ans.setText("🔴 Recording emergency audio..."));
-
-        new Handler().postDelayed(this::stopWavRecording, 10000);
-    }
-
-
-    private void stopWavRecording() {
-        if (audioRecord != null && isRecording) {
-            isRecording = false;
-            audioRecord.stop();
-            audioRecord.release();
-            audioRecord = null;
-
-            //runOnUiThread(() -> ans.setText("✅ Recording completed. Transcribing..."));
-            uploadAudioToFirebase(wavFile);
-        }
-    }
-
-    private void writeAudioDataToWavFile(File file, int bufferSize, int sampleRate) {
-        try (FileOutputStream fos = new FileOutputStream(file)) {
-            byte[] buffer = new byte[bufferSize];
-            int totalAudioLen = 0;
-
-            writeWavHeader(fos, sampleRate, 1, 16, 0);
-
-            while (isRecording) {
-                int read = audioRecord.read(buffer, 0, buffer.length);
-                if (read > 0) {
-                    fos.write(buffer, 0, read);
-                    totalAudioLen += read;
-                }
-            }
-
-            RandomAccessFile raf = new RandomAccessFile(file, "rw");
-            writeWavHeader(raf, sampleRate, 1, 16, totalAudioLen);
-            raf.close();
-
-        } catch (IOException e) {
-            Log.e("AUDIO", "Recording failed", e);
-        }
-    }
-
-    private void writeWavHeader(FileOutputStream out, int sampleRate, int channels,
-                                int bitsPerSample, long totalAudioLen) throws IOException {
-        long byteRate = sampleRate * channels * bitsPerSample / 8;
-        long totalDataLen = totalAudioLen + 36;
-
-        byte[] header = new byte[44];
-        header[0] = 'R'; header[1] = 'I'; header[2] = 'F'; header[3] = 'F';
-        header[4] = (byte) (totalDataLen & 0xff);
-        header[5] = (byte) ((totalDataLen >> 8) & 0xff);
-        header[6] = (byte) ((totalDataLen >> 16) & 0xff);
-        header[7] = (byte) ((totalDataLen >> 24) & 0xff);
-        header[8] = 'W'; header[9] = 'A'; header[10] = 'V'; header[11] = 'E';
-        header[12] = 'f'; header[13] = 'm'; header[14] = 't'; header[15] = ' ';
-        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0;
-        header[20] = 1; header[21] = 0;
-        header[22] = (byte) channels; header[23] = 0;
-        header[24] = (byte) (sampleRate & 0xff);
-        header[25] = (byte) ((sampleRate >> 8) & 0xff);
-        header[26] = (byte) ((sampleRate >> 16) & 0xff);
-        header[27] = (byte) ((sampleRate >> 24) & 0xff);
-        header[28] = (byte) (byteRate & 0xff);
-        header[29] = (byte) ((byteRate >> 8) & 0xff);
-        header[30] = (byte) ((byteRate >> 16) & 0xff);
-        header[31] = (byte) ((byteRate >> 24) & 0xff);
-        header[32] = (byte) (channels * bitsPerSample / 8); header[33] = 0;
-        header[34] = (byte) bitsPerSample; header[35] = 0;
-        header[36] = 'd'; header[37] = 'a'; header[38] = 't'; header[39] = 'a';
-        header[40] = (byte) (totalAudioLen & 0xff);
-        header[41] = (byte) ((totalAudioLen >> 8) & 0xff);
-        header[42] = (byte) ((totalAudioLen >> 16) & 0xff);
-        header[43] = (byte) ((totalAudioLen >> 24) & 0xff);
-
-        out.write(header, 0, 44);
-    }
-
-    private void writeWavHeader(RandomAccessFile raf, int sampleRate, int channels,
-                                int bitsPerSample, long totalAudioLen) throws IOException {
-        raf.seek(0);
-        writeWavHeader(new FileOutputStream(raf.getFD()), sampleRate, channels, bitsPerSample, totalAudioLen);
-    }
-
-
-    // ------------------- CLASSIFICATION (GEMINI) -------------------
-    private void initializeAIModel() {
-        generativeModel = new GenerativeModel(
-                "gemini-1.5-flash",
-                BuildConfig.GEMINI_API_KEY
-        );
-        model = GenerativeModelFutures.from(generativeModel);
-    }
-
-    private void classifyTranscript(String transcript) {
-       // runOnUiThread(() -> ans.setText("🔄 Classifying distress..."));
-
-        new Thread(() -> {
-            try {
-                String prompt = "Classify the following transcript as 'Fire, GBV, Medical, House break in':\n" + transcript;
-
-                Content content = new Content.Builder()
-                        .addText(prompt)
-                        .build();
-
-                GenerateContentResponse response = model.generateContent(content).get();
-                String aiResponse = response.getText();
-
-                if (aiResponse == null) {
-                    throw new IllegalStateException("AI returned null response");
-                }
-
-                //runOnUiThread(() -> ans.setText("Classification: " + aiResponse));
-                saveIncident(aiResponse, "distress_classification");
-
-            } catch (ExecutionException e) {
-                //runOnUiThread(() -> ans.setText("Classification failed: " + e.getCause().getMessage()));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                //runOnUiThread(() -> ans.setText("Classification interrupted"));
-            }
-        }).start();
-    }
-
-    // ------------------- PORCUPINE (WAKE WORD) -------------------
-    private void startWakeWordDetection() {
         int bufferSize = AudioRecord.getMinBufferSize(
                 porcupine.getSampleRate(),
                 AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT);
+                AudioFormat.ENCODING_PCM_16BIT
+        );
 
-        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-        audioRecord = new AudioRecord(
+        if (bufferSize <= 0) bufferSize = porcupine.getFrameLength() * 2; // fallback
+
+        hotwordRecord = new AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 porcupine.getSampleRate(),
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize);
+                bufferSize
+        );
 
-        audioRecord.startRecording();
+        try {
+            hotwordRecord.startRecording();
+        } catch (IllegalStateException ise) {
+            Log.e(TAG, "Hotword startRecording failed", ise);
+            return;
+        }
+
         isListening = true;
 
-        recordingThread = new Thread(() -> {
-            short[] buffer = new short[porcupine.getFrameLength()];
-            while (isListening) {
-                int result = audioRecord.read(buffer, 0, buffer.length);
-                if (result > 0) {
+        hotwordThread = new Thread(() -> {
+            short[] buf = new short[porcupine.getFrameLength()];
+            while (isListening && hotwordRecord != null) {
+                int read = hotwordRecord.read(buf, 0, buf.length);
+                if (read > 0) {
                     try {
-                        int keywordIndex = porcupine.process(buffer);
+                        int keywordIndex = porcupine.process(buf);
                         if (keywordIndex >= 0) {
-                            //runOnUiThread(this::triggerDangerButton);
-                            requireActivity().runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    // update your UI here
-                                    SOSbtn.performClick();
-                                }
-                            });
+                            mainHandler.post(this::onWakeWordDetected);
                         }
                     } catch (PorcupineException e) {
-                        e.printStackTrace();
+                        Log.e(TAG, "Porcupine process error", e);
                     }
                 }
             }
-        });
-        recordingThread.setPriority(Thread.MAX_PRIORITY);
-        recordingThread.start();
+        }, "hotword-thread");
+        hotwordThread.setPriority(Thread.MAX_PRIORITY);
+        hotwordThread.start();
     }
 
-    private String getAssetPath(String assetFileName) {
-        File file = new File(getFilesDir(), assetFileName);
-        if (!file.exists()) {
-            try (InputStream is = getAssets().open(assetFileName);
-                 FileOutputStream os = new FileOutputStream(file)) {
-                byte[] buffer = new byte[1024];
-                int length;
-                while ((length = is.read(buffer)) > 0) {
-                    os.write(buffer, 0, length);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return file.getAbsolutePath();
-    }
-
-    private void triggerDangerButton() {
-        dangerButton.performClick();
-        onWakeWordDetected();
-    }
-
-    protected void onDestroy() {
-        super.onDestroy();
-        isListening = false;
-        if (audioRecord != null) {
-            audioRecord.stop();
-            audioRecord.release();
-        }
-        if (porcupine != null) {
-            porcupine.delete();
-        }
-    }
-
+    // ================= Confirm dialog =================
     private void onWakeWordDetected() {
         long countdownMillis = 5000;
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
-        builder.setTitle("Distress Alert");
-        builder.setMessage("Emergency response will be triggered in 5 seconds.\nTap CANCEL to stop.");
-        builder.setCancelable(false);
-
-        builder.setNegativeButton("CANCEL", (dialog, which) -> {
-            if (timer != null) {
-                timer.cancel();
-            }
-            dialog.dismiss();
-            Toast.makeText(getContext(), "Alert canceled.", Toast.LENGTH_SHORT).show();
-        });
+        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext())
+                .setTitle("Distress Alert")
+                .setMessage("Emergency recording will start in 5 seconds. Tap CANCEL to stop.")
+                .setCancelable(false)
+                .setNegativeButton("CANCEL", (dialog, which) -> {
+                    if (timer != null) timer.cancel();
+                    dialog.dismiss();
+                    // Ensure no recording starts and stop any active recording
+                    stopRecordingIfActive();
+                    Toast.makeText(getContext(), "Alert canceled.", Toast.LENGTH_SHORT).show();
+                });
 
         AlertDialog alertDialog = builder.create();
 
         timer = new CountDownTimer(countdownMillis, 1000) {
             @Override
             public void onTick(long millisUntilFinished) {
-                alertDialog.setMessage(
-                        "Emergency response will be triggered in " + (millisUntilFinished / 1000) + " seconds.\nTap CANCEL to stop."
-                );
+                alertDialog.setMessage("Emergency recording will start in " + (millisUntilFinished / 1000) + " seconds.\nTap CANCEL to stop.");
             }
 
             @Override
             public void onFinish() {
+                if (!alertDialog.isShowing()) return; // safety
                 alertDialog.dismiss();
                 startWavRecording();
             }
@@ -419,56 +218,169 @@ public class SOSFragment extends Fragment {
         timer.start();
     }
 
-    // ------------------- FIREBASE SAVE -------------------
+    // ================= Recording to memory =================
+    private void startWavRecording() {
+        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Record Audio permission not granted");
+            return;
+        }
+        if (isRecording) return; // already running
 
-    private void uploadAudioToFirebase(File audioFile) {
-        if (audioFile == null || !audioFile.exists()) {
-            requireActivity().runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(getContext(), "No audio file found", Toast.LENGTH_SHORT).show();
+        int minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
+        if (minBuf <= 0) minBuf = SAMPLE_RATE; // fallback
+
+        micRecord = new AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT,
+                minBuf
+        );
+
+        try {
+            micRecord.startRecording();
+        } catch (IllegalStateException ise) {
+            Log.e(TAG, "Recorder startRecording failed", ise);
+            return;
+        }
+
+        isRecording = true;
+        pcmBuffer = new ByteArrayOutputStream();
+
+        final int readSize = minBuf;
+        recordingThread = new Thread(() -> {
+            byte[] temp = new byte[readSize];
+            while (isRecording && micRecord != null) {
+                int read = micRecord.read(temp, 0, temp.length);
+                if (read > 0) {
+                    pcmBuffer.write(temp, 0, read);
                 }
-            });
+            }
+        }, "pcm-recorder");
+        recordingThread.start();
+
+        // Auto-stop after 10s
+        mainHandler.postDelayed(this::stopWavRecording, 10_000);
+    }
+
+    private void stopWavRecording() {
+        if (!isRecording) return;
+        isRecording = false;
+
+        if (recordingThread != null) {
+            try { recordingThread.join(500); } catch (InterruptedException ignored) {}
+            recordingThread = null;
+        }
+
+        if (micRecord != null) {
+            try { micRecord.stop(); } catch (Exception ignored) {}
+            try { micRecord.release(); } catch (Exception ignored) {}
+            micRecord = null;
+        }
+
+        // Build WAV in memory and upload
+        if (pcmBuffer != null) {
+            byte[] pcm = pcmBuffer.toByteArray();
+            pcmBuffer = null;
+            byte[] wav = buildWavBytes(pcm, SAMPLE_RATE, 1, 16);
+            uploadWavToFirebase(wav);
+        } else {
+            Toast.makeText(getContext(), "No audio captured", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void stopRecordingIfActive() {
+        // cancel auto-stop callback if queued
+        mainHandler.removeCallbacks(this::stopWavRecording);
+        stopWavRecording();
+    }
+
+    // ================= WAV utils =================
+    private byte[] buildWavBytes(byte[] pcmData, int sampleRate, int channels, int bitsPerSample) {
+        int byteRate = sampleRate * channels * bitsPerSample / 8;
+        int totalDataLen = pcmData.length + 36;
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream(44 + pcmData.length);
+        try {
+            // RIFF header
+            out.write(new byte[]{'R','I','F','F'});
+            writeIntLE(out, totalDataLen);
+            out.write(new byte[]{'W','A','V','E'});
+
+            // fmt chunk
+            out.write(new byte[]{'f','m','t',' '});
+            writeIntLE(out, 16);              // Subchunk1Size for PCM
+            writeShortLE(out, (short)1);      // AudioFormat PCM
+            writeShortLE(out, (short)channels);
+            writeIntLE(out, sampleRate);
+            writeIntLE(out, byteRate);
+            writeShortLE(out, (short)(channels * bitsPerSample / 8));
+            writeShortLE(out, (short)bitsPerSample);
+
+            // data chunk
+            out.write(new byte[]{'d','a','t','a'});
+            writeIntLE(out, pcmData.length);
+            out.write(pcmData);
+        } catch (IOException e) {
+            Log.e(TAG, "WAV build error", e);
+        }
+        return out.toByteArray();
+    }
+
+    private void writeIntLE(ByteArrayOutputStream out, int value) throws IOException {
+        out.write(value & 0xff);
+        out.write((value >> 8) & 0xff);
+        out.write((value >> 16) & 0xff);
+        out.write((value >> 24) & 0xff);
+    }
+
+    private void writeShortLE(ByteArrayOutputStream out, short value) throws IOException {
+        out.write(value & 0xff);
+        out.write((value >> 8) & 0xff);
+    }
+
+    // ================= Firebase =================
+    private void uploadWavToFirebase(byte[] wavBytes) {
+        if (wavBytes == null || wavBytes.length == 0) {
+            Toast.makeText(getContext(), "Empty audio", Toast.LENGTH_SHORT).show();
             return;
         }
 
         FirebaseStorage storage = FirebaseStorage.getInstance();
-        StorageReference storageRef = storage.getReference();
+        StorageReference rootRef = storage.getReference();
+        String fileName = "recordings/emergency_" + System.currentTimeMillis() + ".wav";
+        StorageReference audioRef = rootRef.child(fileName);
 
-        // Save in folder "recordings" with unique filename
-        Uri fileUri = Uri.fromFile(audioFile);
-        StorageReference audioRef = storageRef.child("recordings/" + audioFile.getName());
+        StorageMetadata metadata = new StorageMetadata.Builder()
+                .setContentType("audio/wav")
+                .build();
 
-        audioRef.putFile(fileUri)
-                .addOnSuccessListener(taskSnapshot -> {
-                    audioRef.getDownloadUrl().addOnSuccessListener(uri -> {
-                        String downloadUrl = uri.toString();
+        UploadTask uploadTask = audioRef.putBytes(wavBytes, metadata);
 
-                        // Save metadata + download URL to Firestore
-                        saveIncident(downloadUrl, "audio_recording");
-
-                        requireActivity().runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                Toast.makeText(getContext(), "✅ Audio uploaded successfully! @ " + downloadUrl, Toast.LENGTH_SHORT).show();
-                            }
-                        });
-                    });
-                })
+        uploadTask
                 .addOnFailureListener(e -> {
-                    Log.e("FIREBASE", "Upload failed", e);
-                    requireActivity().runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(getContext(), "❌ Upload failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
-                    });
+                    Log.e(TAG, "Upload failed", e);
+                    Toast.makeText(getContext(), "❌ Upload failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                })
+                .addOnSuccessListener(taskSnapshot -> {
+                    Log.d(TAG, "Upload success, bytes= " + taskSnapshot.getTotalByteCount());
+                    // Retrieve download URL after successful upload
+                    audioRef.getDownloadUrl()
+                            .addOnSuccessListener(uri -> {
+                                String downloadUrl = uri.toString();
+                                Log.d(TAG, "Download URL: " + downloadUrl);
+                                saveIncident(downloadUrl, "audio_recording");
+                                Toast.makeText(getContext(), "✅ Uploaded: " + downloadUrl, Toast.LENGTH_LONG).show();
+                            })
+                            .addOnFailureListener(e -> {
+                                Log.e(TAG, "getDownloadUrl failed", e);
+                                Toast.makeText(getContext(), "Uploaded, but URL access denied (check rules): " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            });
                 });
     }
 
     private void saveIncident(String response, String category) {
         FirebaseFirestore db = FirebaseFirestore.getInstance();
-
         Map<String, Object> incident = new HashMap<>();
         incident.put("response", response);
         incident.put("category", category);
@@ -476,10 +388,86 @@ public class SOSFragment extends Fragment {
         incident.put("userId", FirebaseAuth.getInstance().getUid());
 
         db.collection("incidents").add(incident)
-                .addOnSuccessListener(doc -> Log.d("FIREBASE", "Saved incident"))
-                .addOnFailureListener(e -> Log.e("FIREBASE", "Error", e));
+                .addOnSuccessListener(doc -> Log.d(TAG, "Saved incident"))
+                .addOnFailureListener(e -> Log.e(TAG, "Firestore error", e));
     }
 
+    // ================= AI (unchanged behavior) =================
+    private void initializeAIModel() {
+        generativeModel = new GenerativeModel(
+                "gemini-1.5-flash",
+                BuildConfig.GEMINI_API_KEY
+        );
+        model = GenerativeModelFutures.from(generativeModel);
+    }
 
+    private void classifyTranscript(String transcript) {
+        new Thread(() -> {
+            try {
+                String prompt = "Classify the following transcript as 'Fire, GBV, Medical, House break in':\n" + transcript;
+                Content content = new Content.Builder().addText(prompt).build();
+                GenerateContentResponse response = model.generateContent(content).get();
+                String aiResponse = response.getText();
+                if (aiResponse != null) {
+                    saveIncident(aiResponse, "distress_classification");
+                }
+            } catch (ExecutionException | InterruptedException e) {
+                Log.e(TAG, "AI classify error", e);
+                Thread.currentThread().interrupt();
+            }
+        }).start();
+    }
 
+    // ================= Helpers =================
+    private String getAssetPath(String assetFileName) {
+        try {
+            java.io.File file = new java.io.File(requireContext().getFilesDir(), assetFileName);
+            if (!file.exists()) {
+                try (InputStream is = requireContext().getAssets().open(assetFileName);
+                     java.io.FileOutputStream os = new java.io.FileOutputStream(file)) {
+                    byte[] buffer = new byte[1024];
+                    int length;
+                    while ((length = is.read(buffer)) > 0) {
+                        os.write(buffer, 0, length);
+                    }
+                }
+            }
+            return file.getAbsolutePath();
+        } catch (IOException e) {
+            Log.e(TAG, "Asset copy failed", e);
+            return null;
+        }
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        // Cancel any pending auto-stop
+        if (mainHandler != null) mainHandler.removeCallbacks(this::stopWavRecording);
+        if (timer != null) timer.cancel();
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // Stop wake-word
+        isListening = false;
+        if (hotwordThread != null) {
+            try { hotwordThread.join(300); } catch (InterruptedException ignored) {}
+            hotwordThread = null;
+        }
+        if (hotwordRecord != null) {
+            try { hotwordRecord.stop(); } catch (Exception ignored) {}
+            try { hotwordRecord.release(); } catch (Exception ignored) {}
+            hotwordRecord = null;
+        }
+
+        // Stop any active recording
+        stopRecordingIfActive();
+
+        if (porcupine != null) {
+            porcupine.delete();
+            porcupine = null;
+        }
+    }
 }

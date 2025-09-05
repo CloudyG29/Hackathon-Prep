@@ -2,7 +2,11 @@ package com.example.hackathonprep.ui.home;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.location.Location;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -14,12 +18,17 @@ import android.widget.Spinner;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresPermission;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
-import androidx.lifecycle.ViewModelProvider;
 
 import com.example.hackathonprep.R;
 import com.example.hackathonprep.databinding.FragmentHomeBinding;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -27,43 +36,61 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class HomeFragment extends Fragment implements OnMapReadyCallback {
 
+    private FragmentHomeBinding binding;
     private GoogleMap mMap;
+    private Marker myLocationMarker;
     private Spinner spinnerDangerTypes;
     private FusedLocationProviderClient fusedLocationClient;
-    private FragmentHomeBinding binding;
-    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
+    private LocationRequest locationRequest;
+    private LocationCallback locationCallback;
 
-    // Sample data source for danger areas
     private List<DangerArea> dangerAreas = new ArrayList<>();
     private String[] dangerTypes = {"All", "High Crime", "GBV Hotspot", "Unsafe at Night"};
     private String selectedFilterType = "All";
 
+    private List<Mutual> mutuals = new ArrayList<>();
+
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
+
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
+
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
 
         spinnerDangerTypes = root.findViewById(R.id.spinnerDangerTypes);
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity());
 
-        // Populate sample data
-        populateSampleData();
+        setupSpinner();
+        populateDangerAreas();
+        populateMutuals();
+        setupLocationUpdates();
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                requireContext(),
-                android.R.layout.simple_spinner_item,
-                dangerTypes
-        );
+        SupportMapFragment mapFragment = (SupportMapFragment) getChildFragmentManager()
+                .findFragmentById(R.id.map);
+        if (mapFragment != null) mapFragment.getMapAsync(this);
+
+        binding.fabFocusMe.setOnClickListener(v -> {
+            if (myLocationMarker != null) {
+                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocationMarker.getPosition(), 15));
+            }
+        });
+
+        return root;
+    }
+
+    private void setupSpinner() {
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(requireContext(),
+                android.R.layout.simple_spinner_item, dangerTypes);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerDangerTypes.setAdapter(adapter);
 
@@ -71,165 +98,189 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedFilterType = dangerTypes[position];
-                Toast.makeText(requireContext(), "Selected: " + selectedFilterType, Toast.LENGTH_SHORT).show();
-
-                // Call the new method to update markers
                 updateMapMarkersAndCircles();
             }
 
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
         });
-
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity());
-
-        // Set up the map fragment
-        SupportMapFragment mapFragment = (SupportMapFragment) getChildFragmentManager()
-                .findFragmentById(R.id.map);
-        if (mapFragment != null) {
-            mapFragment.getMapAsync(this);
-        }
-
-        return root;
     }
 
-    private void populateSampleData() {
-        // Dummy data for demonstration around Johannesburg/Pretoria area.
-        // Radius values are in meters.
-        dangerAreas.add(new DangerArea(new LatLng(-26.1952, 28.0340), "High Crime", "Central Johannesburg Market", 150)); // Egoli
-        dangerAreas.add(new DangerArea(new LatLng(-26.2041, 28.0473), "GBV Hotspot", "Hillbrow Area", 100)); // Hillbrow
-        dangerAreas.add(new DangerArea(new LatLng(-25.7479, 28.2293), "Unsafe at Night", "Hatfield Square", 80)); // Hatfield, Pretoria
-        dangerAreas.add(new DangerArea(new LatLng(-26.1211, 28.0396), "High Crime", "Sandton Taxi Rank", 120)); // Sandton
-        dangerAreas.add(new DangerArea(new LatLng(-26.0094, 27.9150), "Unsafe at Night", "Fourways Shopping Area", 90)); // Fourways
-        dangerAreas.add(new DangerArea(new LatLng(-26.1714, 27.9009), "GBV Hotspot", "Soweto Community Park", 110)); // Soweto
+    private void populateDangerAreas() {
+        dangerAreas.add(new DangerArea(new LatLng(-26.1952, 28.0340), "High Crime", "Central Johannesburg Market", 150));
+        dangerAreas.add(new DangerArea(new LatLng(-26.2041, 28.0473), "GBV Hotspot", "Hillbrow Area", 100));
+        dangerAreas.add(new DangerArea(new LatLng(-25.7479, 28.2293), "Unsafe at Night", "Hatfield Square", 80));
+        dangerAreas.add(new DangerArea(new LatLng(-26.1211, 28.0396), "High Crime", "Sandton Taxi Rank", 120));
+        dangerAreas.add(new DangerArea(new LatLng(-26.0094, 27.9150), "Unsafe at Night", "Fourways Shopping Area", 90));
+        dangerAreas.add(new DangerArea(new LatLng(-26.1714, 27.9009), "GBV Hotspot", "Soweto Community Park", 110));
+    }
+
+    private void populateMutuals() {
+        mutuals.add(new Mutual(new LatLng(-26.2034, 28.0456), "Thabo Mokoena"));
+        mutuals.add(new Mutual(new LatLng(-25.7557, 28.2332), "Lerato Dlamini"));
+        mutuals.add(new Mutual(new LatLng(-26.1375, 27.9734), "Sipho Nkosi"));
+    }
+
+    private void setupLocationUpdates() {
+        locationRequest = LocationRequest.create();
+        locationRequest.setInterval(5000); // 5 seconds
+        locationRequest.setFastestInterval(2000);
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                if (locationResult == null) return;
+                moveToUserLocation(locationResult.getLastLocation());
+            }
+        };
+    }
+
+    private void moveToUserLocation(Location location) {
+        if (mMap == null || location == null) return;
+        LatLng myLatLng = new LatLng(location.getLatitude(), location.getLongitude());
+
+        Bitmap bmp = createInitialsMarker("ME", Color.parseColor("#4CAF50")); // green circle for me
+
+        if (myLocationMarker == null) {
+            myLocationMarker = mMap.addMarker(new MarkerOptions()
+                    .position(myLatLng)
+                    .title("Me")
+                    .icon(BitmapDescriptorFactory.fromBitmap(bmp)));
+            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLatLng, 15));
+        } else {
+            myLocationMarker.setPosition(myLatLng);
+            myLocationMarker.setIcon(BitmapDescriptorFactory.fromBitmap(bmp));
+        }
     }
 
     private void updateMapMarkersAndCircles() {
-        if (mMap == null) {
-            return;
-        }
+        if (mMap == null) return;
 
-        // Clear all existing markers and shapes
+        // Save current user location
+        LatLng myLatLng = myLocationMarker != null ? myLocationMarker.getPosition() : null;
+
+        // Clear all
         mMap.clear();
 
-        // Add the campus circle back (or remove if no longer needed)
-        LatLng campus = new LatLng(-25.7545, 28.2314); // University of Pretoria main campus
-        mMap.addCircle(new CircleOptions()
-                .center(campus)
-                .radius(200)
-                .strokeColor(Color.parseColor("#448AFF")) // Light blue
-                .fillColor(0x33448AFF)); // Semi-transparent light blue
-
-        // Iterate through the danger areas and add markers and circles based on the filter
+        // Add danger areas
         for (DangerArea area : dangerAreas) {
             if (selectedFilterType.equals("All") || area.type.equals(selectedFilterType)) {
-                // Add a marker for the center of the danger area
                 MarkerOptions markerOptions = new MarkerOptions()
                         .position(area.location)
                         .title(area.title)
                         .snippet(area.type);
 
-                // Define colors for circles
-                int circleStrokeColor = Color.BLACK;
-                int circleFillColor = 0x00000000; // Transparent default
+                int strokeColor = Color.BLACK, fillColor = 0x00000000;
 
-                // Customize marker colors and circle colors based on type
                 switch (area.type) {
                     case "High Crime":
                         markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-                        circleStrokeColor = Color.parseColor("#FF0000"); // Red
-                        circleFillColor = 0x33FF0000; // Semi-transparent red
+                        strokeColor = Color.RED;
+                        fillColor = 0x33FF0000;
                         break;
                     case "GBV Hotspot":
                         markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA));
-                        circleStrokeColor = Color.parseColor("#FF00FF"); // Magenta
-                        circleFillColor = 0x33FF00FF; // Semi-transparent magenta
+                        strokeColor = Color.MAGENTA;
+                        fillColor = 0x33FF00FF;
                         break;
                     case "Unsafe at Night":
                         markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE));
-                        circleStrokeColor = Color.parseColor("#FFA500"); // Orange
-                        circleFillColor = 0x33FFA500; // Semi-transparent orange
+                        strokeColor = Color.parseColor("#FFA500");
+                        fillColor = 0x33FFA500;
                         break;
                 }
                 mMap.addMarker(markerOptions);
-
-                // Add a circle to visually represent the danger area
                 mMap.addCircle(new CircleOptions()
                         .center(area.location)
-                        .radius(area.radius) // Use the radius from DangerArea
-                        .strokeColor(circleStrokeColor)
-                        .strokeWidth(3) // Make the stroke a bit wider for visibility
-                        .fillColor(circleFillColor));
+                        .radius(area.radius)
+                        .strokeColor(strokeColor)
+                        .strokeWidth(3)
+                        .fillColor(fillColor));
             }
         }
+
+        // Add mutuals
+        for (Mutual friend : mutuals) {
+            Bitmap bmp = createInitialsMarker(friend.getInitials(), Color.parseColor("#2196F3"));
+            mMap.addMarker(new MarkerOptions()
+                    .position(friend.location)
+                    .title(friend.name)
+                    .icon(BitmapDescriptorFactory.fromBitmap(bmp))
+            );
+        }
+
+        // Restore user marker
+        if (myLatLng != null) {
+            Bitmap bmp = createInitialsMarker("ME", Color.parseColor("#4CAF50"));
+            myLocationMarker = mMap.addMarker(new MarkerOptions()
+                    .position(myLatLng)
+                    .title("Me")
+                    .icon(BitmapDescriptorFactory.fromBitmap(bmp)));
+        }
+    }
+
+    private Bitmap createInitialsMarker(String initials, int color) {
+        int size = 120;
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint paintCircle = new Paint();
+        paintCircle.setColor(color);
+        paintCircle.setAntiAlias(true);
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paintCircle);
+
+        Paint paintText = new Paint();
+        paintText.setColor(Color.WHITE);
+        paintText.setTextSize(40f);
+        paintText.setFakeBoldText(true);
+        paintText.setAntiAlias(true);
+        paintText.setTextAlign(Paint.Align.CENTER);
+
+        Rect bounds = new Rect();
+        paintText.getTextBounds(initials, 0, initials.length(), bounds);
+        canvas.drawText(initials, size / 2f, size / 2f - bounds.exactCenterY(), paintText);
+
+        return bitmap;
     }
 
     @Override
-    public void onMapReady(GoogleMap googleMap) {
+    public void onMapReady(@NonNull GoogleMap googleMap) {
         mMap = googleMap;
 
-        // Initially populate the map with all markers and circles
-        updateMapMarkersAndCircles();
-
-        // Check location permission and move camera safely
-        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    LOCATION_PERMISSION_REQUEST_CODE
-            );
+        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
         } else {
-            moveToUserLocation();
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
         }
-        // Set a default camera position if user location isn't immediately available or permitted
-        // This will move the camera to a general area of Johannesburg/Pretoria
-        LatLng defaultLocation = new LatLng(-26.2041, 28.0473); // Central Johannesburg
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 10));
+
+        LatLng defaultLoc = new LatLng(-26.2041, 28.0473);
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLoc, 10));
+
+        updateMapMarkersAndCircles();
     }
 
+    @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, now it's safe to get the location
-                moveToUserLocation();
-            } else {
-                // Permission denied, handle gracefully (e.g., show a message)
-                Toast.makeText(requireContext(), "Location permission denied. Cannot show user's location.", Toast.LENGTH_LONG).show();
-            }
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE
+                && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
+        } else {
+            Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT).show();
         }
-    }
-
-    private void moveToUserLocation() {
-        // Double-check permission before using location
-        if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-
-        if (mMap == null) return; // extra safety
-
-        mMap.setMyLocationEnabled(true);
-
-        fusedLocationClient.getLastLocation().addOnSuccessListener(requireActivity(), new OnSuccessListener<Location>() {
-            @Override
-            public void onSuccess(Location location) {
-                if (location != null) {
-                    LatLng myLatLng = new LatLng(location.getLatitude(), location.getLongitude());
-                    mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(myLatLng, 15)); // Use animateCamera for smoother transition
-                } else {
-                    // Fallback if location is null, remains on the default set in onMapReady
-                    Toast.makeText(requireContext(), "Could not retrieve current location.", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
     }
 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;
+        if (fusedLocationClient != null && locationCallback != null)
+            fusedLocationClient.removeLocationUpdates(locationCallback);
     }
 }

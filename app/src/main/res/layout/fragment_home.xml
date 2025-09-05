@@ -35,13 +35,12 @@
 
         <!-- Floating Action Button -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/fabOptions"
+            android:id="@+id/fabFocusMe"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:layout_margin="10dp"
-            app:backgroundTint="@color/design_default_color_error"
-            app:srcCompat="@android:drawable/ic_input_add"
-            app:tint="@android:color/white" />
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:src="@drawable/ic_my_location"
+            android:contentDescription="Focus on Me" />
     </LinearLayout>
 </FrameLayout>

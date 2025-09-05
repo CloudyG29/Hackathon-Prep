@@ -5,9 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FFFFFF"
-    >
+    tools:context=".ui.sos.SOSFragment">
 
-    <!-- Optional: Title or Instruction -->
     <TextView
         android:id="@+id/tvSOSInstruction"
         android:layout_width="wrap_content"
@@ -19,7 +18,6 @@
         android:layout_marginTop="40dp"
         android:textAlignment="center" />
 
-    <!-- Big SOS Button -->
     <Button
         android:id="@+id/btnSOS"
         android:layout_width="200dp"
@@ -30,12 +28,10 @@
         android:elevation="8dp"
         android:gravity="center"
         android:padding="16dp"
-        android:shape="oval"
         android:text="SOS"
         android:textColor="#FFFFFF"
         android:textSize="32sp" />
 
-    <!-- Optional: Status Message -->
     <TextView
         android:id="@+id/tvSOSStatus"
         android:layout_width="wrap_content"

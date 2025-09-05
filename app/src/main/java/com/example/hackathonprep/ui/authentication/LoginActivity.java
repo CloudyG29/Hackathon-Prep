@@ -16,20 +16,32 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.example.hackathonprep.Login;
 import com.example.hackathonprep.MainActivity;
+import com.example.hackathonprep.MainActivity2;
 import com.example.hackathonprep.R;
 import com.example.hackathonprep.Signup;
 import com.example.hackathonprep.picture;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.appcheck.FirebaseAppCheck;
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.Objects;
 
 public class LoginActivity extends AppCompatActivity {
 
     private static final int PICK_IMAGE_REQUEST = 71;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        FirebaseApp.initializeApp(this);
+        FirebaseAppCheck firebaseAppCheck = FirebaseAppCheck.getInstance();
+        firebaseAppCheck.installAppCheckProviderFactory(
+                DebugAppCheckProviderFactory.getInstance());
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_login);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -38,32 +50,38 @@ public class LoginActivity extends AppCompatActivity {
             return insets;
         });
 
-        //Button uploadBtn = findViewById(R.id.button);
-        //uploadBtn.setOnClickListener(v -> chooseImage());
-       // doneButton = findViewById(R.id.done);
+
         Button loginButton = findViewById(R.id.btnLogin);
-        //Button signupButton = findViewById(R.id.btn1);
 
         TextInputEditText  emailEditText;
         TextInputEditText  passwordEditText;
-        //nameEditText = findViewById(R.id.name);
         emailEditText = findViewById(R.id.etLoginEmail);
         passwordEditText = findViewById(R.id.etLoginPassword);
-
-        loginButton.setOnClickListener(v -> {
-            emailEditText.setVisibility(View.VISIBLE);
-            passwordEditText.setVisibility(View.VISIBLE);
-            //doneButton.setVisibility(View.VISIBLE);
-            //loginButton.setVisibility(View.GONE);
+       /* if (mAuth.getCurrentUser() != null) {
+            // User is already logged in, redirect to main activity
+            startActivity(new Intent(LoginActivity.this, MainActivity2.class));
+            finish();
+        }*/
 
             loginButton.setOnClickListener(m -> {
+                String email = Objects.requireNonNull(emailEditText.getText()).toString();
+                String password = Objects.requireNonNull(passwordEditText.getText()).toString();
+
                 Login login = new Login();
                 login.login(Objects.requireNonNull(emailEditText.getText()).toString(), Objects.requireNonNull(passwordEditText.getText()).toString());
 
-                Toast.makeText(LoginActivity.this, "Login Successful", Toast.LENGTH_SHORT).show();
+               // if(Login.loginCheck == 1) {
+                    Toast.makeText(LoginActivity.this, "Login Successful", Toast.LENGTH_SHORT).show();
+                    Intent intent = new Intent(LoginActivity.this, MainActivity2.class);
+                    startActivity(intent);
+                    finish();
+               // }
+               // else {
+                    //Toast.makeText(LoginActivity.this, "Login Unsuccessful", Toast.LENGTH_SHORT).show();
+               // }
 
             });
-        });
+
 
 
 

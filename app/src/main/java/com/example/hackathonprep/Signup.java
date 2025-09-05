@@ -11,9 +11,9 @@ import java.util.Map;
 
 public class Signup {
 
-    FirebaseAuth mAuth = FirebaseAuth.getInstance();
-    FirebaseFirestore db = FirebaseFirestore.getInstance();
-    public void signup(String email,String Password,String name){
+    static FirebaseAuth mAuth = FirebaseAuth.getInstance();
+    static FirebaseFirestore db = FirebaseFirestore.getInstance();
+    public static void signup(String email,String Password,String name){
         mAuth.createUserWithEmailAndPassword(email,Password).addOnCompleteListener(task -> {
             if (task.isSuccessful()){
                 FirebaseUser user = mAuth.getCurrentUser();

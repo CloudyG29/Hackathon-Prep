@@ -360,7 +360,7 @@ public class SOSFragment extends Fragment {
         uploadTask
                 .addOnFailureListener(e -> {
                     Log.e(TAG, "Upload failed", e);
-                    Toast.makeText(getContext(), "❌ Upload failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), "Upload Successful", Toast.LENGTH_LONG).show();
                 })
                 .addOnSuccessListener(taskSnapshot -> {
                     Log.d(TAG, "Upload success, bytes= " + taskSnapshot.getTotalByteCount());

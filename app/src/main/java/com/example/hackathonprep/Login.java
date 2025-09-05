@@ -7,6 +7,8 @@ import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 public class Login {
+    public static int loginCheck = 0;
+
     FirebaseAuth mAuth=FirebaseAuth.getInstance();
     FirebaseFirestore db=FirebaseFirestore.getInstance();
     public void login(String email , String password){
@@ -20,12 +22,13 @@ public class Login {
                     String name=document.getString("name");
                     //String phone=document.getString("phone");
                     Log.d("Login","Name:"+name);
+                    loginCheck += 1;
                     }
-
                     });
             }
             else{
                 Log.d("Login","Login Failed");
+                loginCheck = 0;
             }
             });
 

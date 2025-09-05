@@ -18,6 +18,7 @@ annotation = "1.6.0"
 generativeai = "0.9.0"
 firebaseFirestore = "26.0.0"
 firebaseAuth = "24.0.1"
+firebaseStorage = "22.0.0"
 
 [libraries]
 android-leopard = { module = "ai.picovoice:android-leopard", version.ref = "androidLeopard" }
@@ -38,6 +39,7 @@ annotation = { group = "androidx.annotation", name = "annotation", version.ref =
 generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeai" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore", version.ref = "firebaseFirestore" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth", version.ref = "firebaseAuth" }
+firebase-storage = { group = "com.google.firebase", name = "firebase-storage", version.ref = "firebaseStorage" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

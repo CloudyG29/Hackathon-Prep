@@ -1,5 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Base -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="background_light">#F9F9F9</color>
+
+    <!-- Brand / Primary -->
+    <color name="primary">#1565C0</color> <!-- Deep Blue -->
+    <color name="on_primary">#FFFFFF</color>
+
+    <!-- Secondary (Emergency) -->
+    <color name="secondary">#D32F2F</color> <!-- Red -->
+    <color name="on_secondary">#FFFFFF</color>
+
+    <!-- Accent -->
+    <color name="accent_orange">#FF9800</color>
+    <color name="accent_green">#4CAF50</color>
 </resources>

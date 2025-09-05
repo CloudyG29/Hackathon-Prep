@@ -21,6 +21,8 @@ import com.example.hackathonprep.Signup;
 import com.example.hackathonprep.picture;
 import com.google.android.material.textfield.TextInputEditText;
 
+import java.util.Objects;
+
 public class LoginActivity extends AppCompatActivity {
 
     private static final int PICK_IMAGE_REQUEST = 71;
@@ -56,9 +58,10 @@ public class LoginActivity extends AppCompatActivity {
 
             loginButton.setOnClickListener(m -> {
                 Login login = new Login();
-                login.login(emailEditText.getText().toString(), passwordEditText.getText().toString());
+                login.login(Objects.requireNonNull(emailEditText.getText()).toString(), Objects.requireNonNull(passwordEditText.getText()).toString());
 
                 Toast.makeText(LoginActivity.this, "Login Successful", Toast.LENGTH_SHORT).show();
+
             });
         });
 

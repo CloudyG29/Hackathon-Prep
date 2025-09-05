@@ -1,5 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Replace these with your custom brand colors -->
+    <color name="primary">#2196F3</color> <!-- Blue -->
+    <color name="primaryVariant">#1976D2</color> <!-- Darker Blue -->
+    <color name="secondary">#FF5722</color> <!-- Orange -->
 </resources>

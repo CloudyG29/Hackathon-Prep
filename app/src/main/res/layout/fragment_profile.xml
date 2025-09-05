@@ -24,7 +24,70 @@
             android:layout_gravity="center_horizontal"
             android:paddingBottom="16dp" />
 
-        <!-- Emergency Contacts Section -->
+        <!-- 🔹 Mutuals Section -->
+        <TextView
+            android:id="@+id/tvMutualsHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Find Mutuals"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#000000"
+            android:paddingTop="16dp"
+            android:paddingBottom="8dp" />
+
+        <!-- Phone Number Input -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:background="#F2F2F2"
+            android:layout_marginBottom="8dp">
+
+            <EditText
+                android:id="@+id/etPhoneNumber"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Enter phone number"
+                android:inputType="phone"
+                android:padding="8dp"
+                android:textColor="#000000"
+                android:textColorHint="#888888" />
+
+            <Button
+                android:id="@+id/btnSearchMutual"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Search"
+                android:backgroundTint="#2196F3"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <!-- Requests Section -->
+        <TextView
+            android:id="@+id/tvRequestsHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pending Requests"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#000000"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp" />
+
+        <LinearLayout
+            android:id="@+id/requestsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:background="#F9F9F9"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Your Emergency Contacts Section (already present) -->
         <TextView
             android:id="@+id/tvEmergencyContactsHeader"
             android:layout_width="wrap_content"
@@ -63,7 +126,7 @@
                 android:textColor="#555555" />
         </LinearLayout>
 
-        <!-- Button to Add Contact -->
+        <!-- Add Contact Button -->
         <Button
             android:id="@+id/btnAddContact"
             android:layout_width="match_parent"
@@ -74,7 +137,7 @@
             android:layout_marginTop="8dp"
             android:padding="12dp" />
 
-        <!-- Preferences Section -->
+        <!-- Preferences Section (unchanged) -->
         <TextView
             android:id="@+id/tvPreferencesHeader"
             android:layout_width="wrap_content"
@@ -86,7 +149,7 @@
             android:paddingTop="24dp"
             android:paddingBottom="8dp" />
 
-        <!-- Example Preference Item: Notifications -->
+        <!-- Notifications -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -111,7 +174,7 @@
                 android:checked="true" />
         </LinearLayout>
 
-        <!-- Example Preference Item: Map Settings -->
+        <!-- Map Settings -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -136,7 +199,7 @@
                 android:checked="true" />
         </LinearLayout>
 
-        <!-- Example Preference Item: Data Privacy -->
+        <!-- Data Privacy -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
